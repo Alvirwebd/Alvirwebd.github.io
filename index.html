@@ -156,7 +156,10 @@
     /* Floating In-Room Beacon Pods (Cute, Holographic 3D Floating Capsules) */
     .beacon-pod {
       filter: drop-shadow(0 16px 36px rgba(0, 0, 0, 0.75));
-      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      /* NOT `all`: left/top are written by the anchor loop at ~12fps and a
+         transition on them makes the chip smear behind the desk. */
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  opacity 0.3s ease, filter 0.3s ease;
     }
     .beacon-pod:hover {
       transform: translateY(-5px) scale(1.04);
@@ -1267,6 +1270,23 @@
       }
     }
 
+    /* safe-area aware chrome on tablets and desktops as well: an iPad in
+       landscape and a notched phone in landscape (844x390) both have insets
+       even though they are ≥768px wide. Insets are 0 on a normal monitor, so
+       desktop keeps its 16px margins exactly. */
+    @media (min-width: 768px) and (min-height: 601px) {
+      #roomHeader {
+        top: calc(var(--safe-t) + 16px);
+        left: calc(var(--safe-l) + 16px);
+        right: calc(var(--safe-r) + 16px);
+      }
+      #roomFooter {
+        bottom: calc(var(--safe-b) + 16px);
+        left: calc(var(--safe-l) + 12px);
+        right: calc(var(--safe-r) + 12px);
+      }
+    }
+
     /* the "tap the CRT…" hint is desktop sugar — it eats a third of a phone dock */
     @media (max-width: 767px), (max-height: 620px) {
       #dockHint { display: none !important; }
@@ -1389,18 +1409,16 @@
       #notebookPill > div:last-child,
       #clickPrompt > div:last-child { display: none !important; }
 
+      /* position is set by the beacon anchor loop (projected from the CRT),
+         so nothing here may pin it to the bottom of the screen */
       #clickPrompt {
-        left: 50% !important;
         right: auto !important;
-        top: auto !important;
-        bottom: calc(var(--safe-b) + 72px) !important;
-        transform: translateX(-50%) !important;
         max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 24px);
         z-index: 12;
       }
       #clickPrompt:hover,
       #clickPrompt:active {
-        transform: translateX(-50%) scale(0.985) !important;
+        transform: scale(0.985) !important;
       }
       #clickPrompt .charcoal-card {
         padding: 8px 10px !important;
@@ -1762,7 +1780,6 @@
       #profilePlate > div:first-child { width: 28px !important; height: 28px !important; }
       #btnAudioToggle > div:first-child { width: 26px !important; height: 26px !important; }
       #notebookPill .np-quote { display: none !important; }
-      #clickPrompt { bottom: calc(var(--safe-b) + 64px) !important; }
       #roomFooter { bottom: calc(var(--safe-b) + 6px) !important; }
       .crt-screen > .grid { grid-template-columns: repeat(8, minmax(0, 1fr)) !important; }
       .desktop-icon > span:first-child { font-size: 18px !important; }
@@ -1958,7 +1975,7 @@
   </div>
 
   <!-- 2. Workstation Beacon — CRT boot plate -->
-  <div id="clickPrompt" class="beacon-pod bob-delayed group absolute left-[50%] -translate-x-1/2 top-[44%] sm:top-[46%] z-10 pointer-events-auto cursor-pointer" onclick="enterWorkstation()">
+  <div id="clickPrompt" class="beacon-pod bob-delayed group absolute top-[44%] sm:top-[46%] z-10 pointer-events-auto cursor-pointer" onclick="enterWorkstation()">
     <div class="charcoal-card px-4 py-3 rounded-[14px]">
       <div class="cp-screen tex-scan rounded-[10px] border border-[#347E79]/25 bg-[#0E1218] px-3 py-2">
         <div class="flex items-center gap-2">
@@ -3048,64 +3065,86 @@ Duration: 2022 – Present (6th Semester)<br><br>
     const CAM_MONITOR_POS = new THREE.Vector3(0, 0.65, 1.55);
     const CAM_MONITOR_TARGET = new THREE.Vector3(0, 0.65, 0.1);
 
-    // ── Mobile-aware camera setup ──────────────────────────────────────────
-    /* Framing is driven by how much of the desk should span the *width* of the
-       screen. A 4.2-unit-wide desk on a 0.46 aspect phone used to be squeezed
-       into a thin, 76°-wide band — that is why the table looked tiny and warped.
-       Now each form factor gets a deliberate crop instead. */
+    // ── Responsive framing ─────────────────────────────────────────────────
+    /* One continuous model instead of four branches keyed on width/height.
+       Two calibrated endpoints are blended by how "portrait" the viewport is:
+
+         tall (aspect ≤ 0.46, e.g. 390×844) — framed by how much desk should
+           span the width, with a higher eye so the tabletop is visible;
+         wide (aspect ≥ 1.55, e.g. 1366×768) — framed by height, i.e. the
+           composition that already worked, byte-for-byte unchanged at 16:9.
+
+       Everything between is a deliberate in-between, so 767px and 768px no
+       longer get different crops. The numbers below are calibration, checked
+       against rendered frames at 320/390/430/768/1024/1440/1920/2560. */
+    const FRAME_TALL_ASPECT = 0.46;
+    const FRAME_WIDE_ASPECT = 1.55;
+    const FRAME_TALL = { fov: 52, posY: 2.20, targetY: 0.80, targetX: -0.06, targetZ: -0.15 };
+    const FRAME_WIDE = { fov: 45, posY: 1.80, targetY: 0.45, targetX:  0.00, targetZ:  0.00, dz: 4.20 };
+
+    /* Desk units that should span the screen width when height is scarce:
+       ~2.75 on a 390px phone, ~3.4 on an iPad portrait. */
+    function frameWidthFor(aspect) { return 1.95 + 1.75 * aspect; }
+
+    /* Desk units that should span the screen height when width is plentiful.
+       A 16:9 desktop wants ~3.5 of them; a landscape phone has 390px of height
+       and wants the CRT to fill it, so ~2.2. This is what keeps "ultrawide
+       monitor" and "phone held sideways" from being treated as the same case:
+       they share an aspect ratio but not a pixel height. */
+    function frameHeightFor(h) {
+      var s = Math.max(0, Math.min(1, (760 - h) / 320));
+      s = s * s * (3 - 2 * s);
+      return 3.48 + (2.20 - 3.48) * s;
+    }
+
     function adaptCameraToViewport() {
       var w = viewportW(), h = viewportH();
       var aspect = w / h;
       camera.aspect = aspect;
 
-      var fov = 45, framedWidth = 0, posY = 1.8, targetX = 0, targetY = 0.45;
+      var t = (FRAME_WIDE_ASPECT - aspect) / (FRAME_WIDE_ASPECT - FRAME_TALL_ASPECT);
+      t = Math.max(0, Math.min(1, t));
+      t = t * t * (3 - 2 * t);                       // smoothstep: no cliff at either end
 
-      if (aspect < 0.8) {
-        // Portrait phone / iPad portrait: close-up on the CRT + notebook
-        fov = 52;
-        framedWidth = w < 600 ? 2.75 : 3.4;
-        posY = 2.2;   // a little higher so the tabletop is actually visible
-        targetX = -0.06;
-        targetY = 0.8;
-      } else if (aspect < 1.15) {
-        // Portrait tablet / nearly-square windows: a bit more of the desk
-        fov = 50;
-        framedWidth = 3.4;
-        posY = 2.15;
-        targetX = -0.2;
-        targetY = 0.72;
-      } else if (h < 560) {
-        // Landscape phone: use the width, not the missing height
-        fov = 45;
-        framedWidth = 4.8;
-        posY = 2.0;
-        targetX = 0;
-        targetY = 0.55;
-      }
+      var fov     = FRAME_WIDE.fov     + (FRAME_TALL.fov     - FRAME_WIDE.fov)     * t;
+      var posY    = FRAME_WIDE.posY    + (FRAME_TALL.posY    - FRAME_WIDE.posY)    * t;
+      var targetY = FRAME_WIDE.targetY + (FRAME_TALL.targetY - FRAME_WIDE.targetY) * t;
+      var targetX = FRAME_WIDE.targetX + (FRAME_TALL.targetX - FRAME_WIDE.targetX) * t;
+      var targetZ = FRAME_WIDE.targetZ + (FRAME_TALL.targetZ - FRAME_WIDE.targetZ) * t;
 
-      if (framedWidth > 0) {
-        var dist = framedWidth / (2 * Math.tan(fov * Math.PI / 360) * aspect);
-        dist = Math.max(2.4, Math.min(dist, 12));
-        camera.fov = fov;
-        CAM_ROOM_POS.set(0, posY, dist - 0.15);
-        CAM_ROOM_TARGET.set(targetX, targetY, -0.15);
-        CAM_MONITOR_POS.set(0, 0.68, Math.min(1.55, dist * 0.35));
-        CAM_MONITOR_TARGET.set(0, 0.68, 0.1);
-      } else {
-        // Desktop / laptop — keep the composition that already works
-        camera.fov = 45;
-        CAM_ROOM_POS.set(0, 1.8, 4.2);
-        CAM_ROOM_TARGET.set(0, 0.45, 0);
-        CAM_MONITOR_POS.set(0, 0.65, 1.55);
-        CAM_MONITOR_TARGET.set(0, 0.65, 0.1);
-      }
+      var tanHalf = Math.tan(fov * Math.PI / 360);
+      /* distance that would fit the wanted desk width at this aspect … */
+      var dzFit = frameWidthFor(aspect) / (2 * tanHalf * aspect);
+      /* … blended with the distance that fits the height we actually have */
+      var dzByHeight = frameHeightFor(h) / (2 * tanHalf);
+      var dz = dzByHeight + (dzFit - dzByHeight) * t;
+
+      /* Short viewports (landscape phones) have almost no height, so the eye
+         sits a little higher and looks slightly up-screen, as it did before. */
+      var shortS = Math.max(0, Math.min(1, (760 - h) / 320));
+      shortS = shortS * shortS * (3 - 2 * shortS);
+      posY += 0.2 * shortS * (1 - t);
+      targetY += 0.1 * shortS * (1 - t);
+
+      /* Past ~1.85 (ultrawide monitor) the height-framed view would leave the
+         desk as a small island in a very wide room, so it earns a little more
+         frame. 16:9/16:10 are untouched, and short landscape viewports are
+         excluded — they are already tight. */
+      if (aspect > 1.85 && shortS < 0.5) dz *= Math.max(0.84, 1 - (aspect - 1.85) * 0.28);
+
+      dz = Math.max(2.6, Math.min(dz, 14));
+
+      camera.fov = fov;
+      CAM_ROOM_POS.set(0, posY, targetZ + dz);
+      CAM_ROOM_TARGET.set(targetX, targetY, targetZ);
+      CAM_MONITOR_POS.set(0, 0.68, Math.min(1.55, dz * 0.35));
+      CAM_MONITOR_TARGET.set(0, 0.68, 0.1);
 
       /* A box viewed dead-on is a flat silhouette. Turning the camera a few
          degrees around the framing target exposes a second face of the desk
-         and lets the tabletop recede — the cheapest honest way to
-         make the desk read as 3D, and it matters most on a phone where only
-         ~2.3 units of a 4.2-unit desk are on screen at all. */
-      var yawDeg = h < 560 ? 6 : (aspect < 0.8 ? 11 : (aspect < 1.15 ? 8 : 5));
+         and lets the tabletop recede. It matters most at phone size, where
+         only ~2.3 units of a 4.2-unit desk are on screen at all. */
+      var yawDeg = 5 + 6 * t;
       var yaw = yawDeg * Math.PI / 180;
       var offX = CAM_ROOM_POS.x - CAM_ROOM_TARGET.x;
       var offZ = CAM_ROOM_POS.z - CAM_ROOM_TARGET.z;
@@ -4484,46 +4523,172 @@ Duration: 2022 – Present (6th Semester)<br><br>
     });
     window.toggleProfileCard = toggleProfileCard;
 
-    // ---- guestbook beacon follows the 3D notebook prop (screen-space projection) ----
+    // ---- in-room beacons: projected from the 3D object each one points at ----
+    /* Both chips used to be placed by CSS percentages (the guestbook one by
+       projection). Percentages know nothing about where the desk actually is
+       once the camera re-frames for an aspect ratio, so a chip could hover
+       over empty floor or sit on top of the dock.
+
+       Now: project the anchor, clamp the chip into the band the header and the
+       dock leave free, then keep the two chips from touching. The percentages
+       left in the CSS are only the pre-JS fallback. */
     (function () {
-      const pill = document.getElementById('notebookPill');
-      if (!pill || typeof THREE === 'undefined') return;
+      const crtPill = document.getElementById('clickPrompt');
+      const nbPill = document.getElementById('notebookPill');
+      const header = document.getElementById('roomHeader');
+      const footer = document.getElementById('roomFooter');
+      if (!crtPill || !nbPill || !header || !footer || typeof THREE === 'undefined') return;
+
       const v = new THREE.Vector3();
-      let last = '';
-      function place() {
-        try {
-          if (typeof notebookGroup === 'undefined' || typeof camera === 'undefined') return;
-          notebookGroup.getWorldPosition(v);
-          v.project(camera);
-          const vw = viewportW();
-          const vh = viewportH();
-          const x = (v.x * 0.5 + 0.5) * vw;
-          const y = (-v.y * 0.5 + 0.5) * vh;
-          const isMobile = isCompactLayout();
-          const edge = isMobile ? 8 : 10;
-          // On phones the dock + the "PRESS START" chip live at the bottom,
-          // so keep the beacon above them instead of letting it overlap.
-          const bottomReserve = isMobile ? 200 : 120;
-          const lOff = isMobile ? (x - pill.offsetWidth * 0.5) : (x - pill.offsetWidth - 34);
-          const tOff = isMobile ? (y - pill.offsetHeight - 10) : (y - pill.offsetHeight - 30);
-          // clamp inside the viewport so the beacon never gets cut off
-          const cl = Math.max(edge, Math.min(Math.round(lOff), vw - pill.offsetWidth - edge));
-          const ct = Math.max(isMobile ? 70 : 64, Math.min(Math.round(tOff), vh - pill.offsetHeight - bottomReserve));
-          const sig = cl + ',' + ct;
-          if (sig !== last) { last = sig; pill.style.left = cl + 'px'; pill.style.top = ct + 'px'; }
-        } catch (err) { /* scene not ready yet */ }
+      const nbWorld = new THREE.Vector3();
+      /* bottom centre of the CRT's face — the chip hangs just below it, on the
+         desk, exactly where the monitor meets the tabletop */
+      const MONITOR_ANCHOR = new THREE.Vector3(0, 0.30, 0.28);
+
+      const band = { l: 0, r: 0, t: 0, b: 0, vw: 0, vh: 0, ready: false };
+      const size = { crt: { w: 0, h: 0 }, nb: { w: 0, h: 0 } };
+      let lastSig = '';
+
+      function toScreen(p) {
+        v.copy(p).project(camera);
+        return { x: (v.x * 0.5 + 0.5) * band.vw, y: (-v.y * 0.5 + 0.5) * band.vh };
       }
-      place();
-      window.addEventListener('resize', place);
-      // Reposition at ~12fps: the beacon drifts slowly, and reading offsetWidth
-      // every frame forces a synchronous layout on mobile.
+
+      /* The free band is measured from the header and dock rects, so it
+         inherits their safe-area insets for free. */
+      function measure() {
+        /* the props don't move, but their world matrices are only refreshed by
+           render(); make sure the very first layout has real ones */
+        if (typeof scene !== 'undefined' && scene) scene.updateMatrixWorld(true);
+        band.vw = viewportW();
+        band.vh = viewportH();
+        const hr = header.getBoundingClientRect();
+        const fr = footer.getBoundingClientRect();
+        band.l = Math.max(6, hr.left);
+        band.r = Math.min(band.vw - 6, hr.right);
+        band.t = Math.max(6, hr.bottom) + 8;
+        band.b = (fr.top || band.vh) - 8;
+        if (!(band.b > band.t + 120)) band.b = Math.min(band.vh - 8, band.t + 120);
+        size.crt.w = crtPill.offsetWidth; size.crt.h = crtPill.offsetHeight;
+        size.nb.w = nbPill.offsetWidth;  size.nb.h = nbPill.offsetHeight;
+        band.ready = true;
+      }
+
+      const clampX = (x, w) => Math.max(band.l, Math.min(x, band.r - w));
+      const clampY = (y, h) => Math.max(band.t, Math.min(y, band.b - h));
+
+      /* The CRT's face is the one thing a chip must never cover: it is both the
+         main interactive object and the brightest surface on screen. */
+      const tmp3 = new THREE.Vector3();
+      function monitorBox() {
+        if (typeof crtGlass === 'undefined' || !crtGlass) return null;
+        if (!crtGlass.geometry.boundingBox) crtGlass.geometry.computeBoundingBox();
+        const b = crtGlass.geometry.boundingBox;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let i = 0; i < 8; i++) {
+          tmp3.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z)
+              .applyMatrix4(crtGlass.matrixWorld);
+          const p = toScreen(tmp3);
+          minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+          minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+        }
+        return { x: minX, y: minY, r: maxX, b: maxY };
+      }
+
+      const PAD = 8;
+      function clearOf(box, obstacles) {
+        for (let i = 0; i < obstacles.length; i++) {
+          const o = obstacles[i];
+          if (!o) continue;
+          if (!(box.r + PAD <= o.x || o.r + PAD <= box.x || box.b + PAD <= o.y || o.b + PAD <= box.y)) return false;
+        }
+        return true;
+      }
+
+      /* Try the preferred spot first (that is what keeps the desktop looking
+         exactly as it did), then a ring of alternatives, then give up and
+         clamp. Any spot that would cover the CRT or the other chip is skipped. */
+      function choose(ax, ay, w, h, obstacles, prefs) {
+        const spots = prefs.concat([
+          [ax - w / 2, ay - h - 12],   // above
+          [ax - w / 2, ay + 12],       // below
+          [ax - w - 14, ay - h / 2],   // left
+          [ax + 14, ay - h / 2],       // right
+          [band.l, band.b - h - 6],    // bottom of the free band
+          [band.l, band.t + 6]         // top of the free band
+        ]);
+        for (let i = 0; i < spots.length; i++) {
+          const x = clampX(spots[i][0], w), y = clampY(spots[i][1], h);
+          const box = { x: x, y: y, r: x + w, b: y + h };
+          if (clearOf(box, obstacles)) return box;
+        }
+        const x = clampX(spots[0][0], w), y = clampY(spots[0][1], h);
+        return { x: x, y: y, r: x + w, b: y + h };
+      }
+
+      function layout() {
+        if (typeof isAtWorkstation !== 'undefined' && isAtWorkstation) return;
+        if (!band.ready) measure();
+        /* project() reads camera.matrixWorldInverse, which the renderer only
+           refreshes inside render(). The first layout happens before the first
+           frame, so refresh it here. */
+        camera.updateMatrixWorld();
+        /* chip sizes change with breakpoints and with the web fonts */
+        if (crtPill.offsetWidth !== size.crt.w) { size.crt.w = crtPill.offsetWidth; size.crt.h = crtPill.offsetHeight; }
+        if (nbPill.offsetWidth !== size.nb.w)   { size.nb.w = nbPill.offsetWidth;   size.nb.h = nbPill.offsetHeight; }
+        if (!size.crt.w || !size.nb.w) return;
+
+        const compact = isCompactLayout();
+        const mon = monitorBox();
+
+        /* CRT chip — hangs under the monitor, on the desk */
+        const ca = toScreen(MONITOR_ANCHOR);
+        const crtBox = choose(ca.x, ca.y, size.crt.w, size.crt.h, [mon],
+                              [[ca.x - size.crt.w / 2, ca.y + 14]]);
+
+        /* guestbook chip — beside the notebook prop */
+        let ax = band.l + 40, ay = band.t + 40;
+        if (typeof notebookGroup !== 'undefined' && notebookGroup) {
+          notebookGroup.getWorldPosition(nbWorld);
+          const p = toScreen(nbWorld);
+          ax = p.x; ay = p.y;
+        }
+        const nbBox = choose(ax, ay, size.nb.w, size.nb.h, [mon, crtBox], compact
+          /* phone: the monitor fills the width, so there is no room beside it —
+             stack under the CRT chip, left-aligned with the notebook */
+          ? [[ax - size.nb.w / 2, crtBox.b + 10], [ax - size.nb.w / 2, ay - size.nb.h - 12]]
+          /* desktop: the spot it has always had, just left of and above the prop */
+          : [[ax - size.nb.w - 18, ay - size.nb.h - 26]]);
+
+        const sig = [crtBox.x, crtBox.y, nbBox.x, nbBox.y].join(',');
+        if (sig !== lastSig) {
+          lastSig = sig;
+          crtPill.style.left = Math.round(crtBox.x) + 'px';
+          crtPill.style.top = Math.round(crtBox.y) + 'px';
+          nbPill.style.left = Math.round(nbBox.x) + 'px';
+          nbPill.style.top = Math.round(nbBox.y) + 'px';
+        }
+      }
+
+      function relayout() { band.ready = false; lastSig = ''; measure(); layout(); }
+
+      relayout();
+      window.addEventListener('resize', relayout);
+      window.addEventListener('orientationchange', function () { setTimeout(relayout, 260); });
+      if (document.fonts && document.fonts.ready) { document.fonts.ready.then(relayout).catch(function () {}); }
+      if (window.ResizeObserver) {
+        try { new ResizeObserver(relayout).observe(header); new ResizeObserver(relayout).observe(footer); } catch (e) {}
+      }
+
+      /* the beacons drift with the slow camera parallax, so ~12fps is plenty */
       var lastRun = 0;
       (function loop(ts) {
         requestAnimationFrame(loop);
-        if (document.hidden || typeof isAtWorkstation !== 'undefined' && isAtWorkstation) return;
+        if (document.hidden) return;
+        if (typeof isAtWorkstation !== 'undefined' && isAtWorkstation) return;
         if (!ts || ts - lastRun < 80) return;
         lastRun = ts;
-        place();
+        layout();
       })();
     })();
 
