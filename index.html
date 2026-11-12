@@ -4545,6 +4545,10 @@ Duration: 2022 – Present (6th Semester)<br><br>
          desk, exactly where the monitor meets the tabletop */
       const MONITOR_ANCHOR = new THREE.Vector3(0, 0.30, 0.28);
 
+      /* A chip must not crowd the dock: 8px read as touching. 28px is the
+         minimum breathing room; the clamp still guarantees the chip can never
+         overlap the dock, even when the viewport is very short. */
+      const DOCK_CLEARANCE = 28;
       const band = { l: 0, r: 0, t: 0, b: 0, vw: 0, vh: 0, ready: false };
       const size = { crt: { w: 0, h: 0 }, nb: { w: 0, h: 0 } };
       let lastSig = '';
@@ -4567,7 +4571,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         band.l = Math.max(6, hr.left);
         band.r = Math.min(band.vw - 6, hr.right);
         band.t = Math.max(6, hr.bottom) + 8;
-        band.b = (fr.top || band.vh) - 8;
+        band.b = (fr.top || band.vh) - DOCK_CLEARANCE;
         if (!(band.b > band.t + 120)) band.b = Math.min(band.vh - 8, band.t + 120);
         size.crt.w = crtPill.offsetWidth; size.crt.h = crtPill.offsetHeight;
         size.nb.w = nbPill.offsetWidth;  size.nb.h = nbPill.offsetHeight;
@@ -4580,14 +4584,18 @@ Duration: 2022 – Present (6th Semester)<br><br>
       /* The CRT's face is the one thing a chip must never cover: it is both the
          main interactive object and the brightest surface on screen. */
       const tmp3 = new THREE.Vector3();
-      function monitorBox() {
-        if (typeof crtGlass === 'undefined' || !crtGlass) return null;
-        if (!crtGlass.geometry.boundingBox) crtGlass.geometry.computeBoundingBox();
-        const b = crtGlass.geometry.boundingBox;
+      const tmpBox = new THREE.Box3();
+      /* Screen-space box of any prop on the desk, so a chip can be told to keep
+         off it. Reads the object's world bounds, so nothing has to move. */
+      function projectBox(obj) {
+        if (typeof obj === 'undefined' || !obj) return null;
+        tmpBox.setFromObject(obj);
+        if (tmpBox.isEmpty()) return null;
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (let i = 0; i < 8; i++) {
-          tmp3.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z)
-              .applyMatrix4(crtGlass.matrixWorld);
+          tmp3.set(i & 1 ? tmpBox.max.x : tmpBox.min.x,
+                   i & 2 ? tmpBox.max.y : tmpBox.min.y,
+                   i & 4 ? tmpBox.max.z : tmpBox.min.z);
           const p = toScreen(tmp3);
           minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
           minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
@@ -4605,24 +4613,32 @@ Duration: 2022 – Present (6th Semester)<br><br>
         return true;
       }
 
-      /* Try the preferred spot first (that is what keeps the desktop looking
-         exactly as it did), then a ring of alternatives, then give up and
-         clamp. Any spot that would cover the CRT or the other chip is skipped. */
-      function choose(ax, ay, w, h, obstacles, prefs) {
-        const spots = prefs.concat([
-          [ax - w / 2, ay - h - 12],   // above
-          [ax - w / 2, ay + 12],       // below
-          [ax - w - 14, ay - h / 2],   // left
-          [ax + 14, ay - h / 2],       // right
-          [band.l, band.b - h - 6],    // bottom of the free band
-          [band.l, band.t + 6]         // top of the free band
-        ]);
+      /* First spot that clears every obstacle, or null. Used by the ladder below
+         and by choose()'s fallback ring. */
+      function searchSpots(spots, obstacles, w, h) {
         for (let i = 0; i < spots.length; i++) {
           const x = clampX(spots[i][0], w), y = clampY(spots[i][1], h);
           const box = { x: x, y: y, r: x + w, b: y + h };
           if (clearOf(box, obstacles)) return box;
         }
-        const x = clampX(spots[0][0], w), y = clampY(spots[0][1], h);
+        return null;
+      }
+
+      /* Last resort: the preferred spot, then a ring around the anchor, then a
+         clamp. Nothing that would cover the CRT, a prop or the other chip is
+         accepted unless there is genuinely no free space left. */
+      function choose(ax, ay, w, h, obstacles, prefs) {
+        const ring = prefs.concat([
+          [ax - w / 2, ay - h - 12],   // above the anchor
+          [ax - w / 2, ay + 12],       // below the anchor
+          [ax - w - 14, ay - h / 2],   // left of it
+          [ax + 14, ay - h / 2],       // right of it
+          [band.l, band.b - h - 6],    // bottom of the free band
+          [band.l, band.t + 6]         // top of the free band
+        ]);
+        const box = searchSpots(ring, obstacles, w, h);
+        if (box) return box;
+        const x = clampX(prefs[0][0], w), y = clampY(prefs[0][1], h);
         return { x: x, y: y, r: x + w, b: y + h };
       }
 
@@ -4639,12 +4655,48 @@ Duration: 2022 – Present (6th Semester)<br><br>
         if (!size.crt.w || !size.nb.w) return;
 
         const compact = isCompactLayout();
-        const mon = monitorBox();
+        const mon = projectBox(typeof crtGlass !== 'undefined' ? crtGlass : null);
+        /* desk props a chip should not sit on — same rule as the CRT face */
+        const nbProp = projectBox(typeof notebookGroup !== 'undefined' ? notebookGroup : null);
+        const padProp = projectBox(typeof mousepad !== 'undefined' ? mousepad : null);
 
-        /* CRT chip — hangs under the monitor, on the desk */
+        /* CRT chip — under the monitor, on the desk.
+           Ladder, in order of how much it still reads as "this CRT":
+             1. under the monitor, sliding along the row, avoiding the mat too
+             2. same row, ignoring the mat (a mat is not worth losing the spot)
+             3. around the monitor (above / beside it)
+             4. anywhere in the free band                                        */
+        const hard = [mon, nbProp];
+        const soft = padProp ? [padProp] : [];
         const ca = toScreen(MONITOR_ANCHOR);
-        const crtBox = choose(ca.x, ca.y, size.crt.w, size.crt.h, [mon],
-                              [[ca.x - size.crt.w / 2, ca.y + 14]]);
+        /* the row hangs under the monitor's actual bottom edge, not under the
+           anchor point, so the chip can never graze the screen */
+        const rowY = Math.max(ca.y + 14, mon ? mon.b + 12 : ca.y + 14);
+        /* ..and it only slides as far as it must: the candidate list holds
+           every x that clears a prop by PAD, ordered by how little it moves, so
+           a chip that already fits stays exactly where it has always been. */
+        const x0 = ca.x - size.crt.w / 2;
+        const cand = [{ x: x0, sh: 0 }];
+        [nbProp, mon].forEach(function (b) {
+          if (!b) return;
+          [b.x - PAD - size.crt.w, b.r + PAD].forEach(function (x) {
+            if (cand.some(function (c) { return Math.abs(c.x - x) < 2; })) return;
+            cand.push({ x: x, sh: x - x0 });
+          });
+        });
+        cand.sort(function (a, b) { return Math.abs(a.sh) - Math.abs(b.sh); });
+        const asSpots = function (list) { return list.map(function (c) { return [c.x, rowY]; }); };
+        /* step 1 may only nudge around the mat, never relocate the chip */
+        const nudge = cand.filter(function (c) { return Math.abs(c.sh) <= 96; });
+        const aroundMon = mon ? [
+          [(mon.x + mon.r) / 2 - size.crt.w / 2, mon.y - size.crt.h - 12],
+          [mon.x - size.crt.w - 14, (mon.y + mon.b) / 2 - size.crt.h / 2],
+          [mon.r + 14, (mon.y + mon.b) / 2 - size.crt.h / 2]
+        ] : [];
+        let crtBox = (soft.length ? searchSpots(asSpots(nudge), hard.concat(soft), size.crt.w, size.crt.h) : null)
+                  || searchSpots(asSpots(cand), hard, size.crt.w, size.crt.h)
+                  || (aroundMon.length ? searchSpots(aroundMon, hard, size.crt.w, size.crt.h) : null)
+                  || choose(ca.x, ca.y, size.crt.w, size.crt.h, hard, [[ca.x - size.crt.w / 2, band.b - size.crt.h - 6]]);
 
         /* guestbook chip — beside the notebook prop */
         let ax = band.l + 40, ay = band.t + 40;
