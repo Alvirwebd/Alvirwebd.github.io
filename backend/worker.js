@@ -357,11 +357,17 @@ export default {
 
       // 7. POST /api/analytics/visit (Record visit: raw IP & decoupled anonymous visit)
       if (request.method === 'POST' && path === '/api/analytics/visit') {
-        const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+        // Capture IP exclusively via Cloudflare's trusted CF-Connecting-IP.
+        // Never fall back to 127.0.0.1 or accept spoofable headers (X-Forwarded-For, X-Real-IP).
+        const rawIp = request.headers.get('CF-Connecting-IP');
+        const hasValidIp = typeof rawIp === 'string' && isValidIpAddress(rawIp.trim());
+        const clientIp = hasValidIp ? rawIp.trim() : null;
 
-        const rateLimitOk = await checkAnalyticsRateLimit(env.DB, clientIp);
-        if (!rateLimitOk) {
-          return jsonResponse({ error: 'Rate limit exceeded.' }, 429, corsHeaders);
+        if (clientIp) {
+          const rateLimitOk = await checkAnalyticsRateLimit(env.DB, clientIp);
+          if (!rateLimitOk) {
+            return jsonResponse({ error: 'Rate limit exceeded.' }, 429, corsHeaders);
+          }
         }
 
         let body = {};
@@ -377,7 +383,6 @@ export default {
         let visitPath = typeof body.path === 'string' ? body.path.trim().slice(0, 128) : '/';
         if (!visitPath.startsWith('/')) visitPath = '/' + visitPath;
 
-        const userAgent = (request.headers.get('User-Agent') || '').slice(0, 256);
         const aidHash = await sha256Hex('aid_' + aid);
 
         // 1. Check if anonymous visitor has visited before (for unique vs returning metrics)
@@ -391,12 +396,15 @@ export default {
           'INSERT INTO anonymous_visits (visitor_aid_hash, path, is_returning) VALUES (?, ?, ?)'
         ).bind(aidHash, visitPath, isReturning).run();
 
-        // 3. Insert into visitor_ip_records (Decoupled: zero aid or tokens stored here)
-        await env.DB.prepare(
-          'INSERT INTO visitor_ip_records (ip, path, user_agent) VALUES (?, ?, ?)'
-        ).bind(clientIp, visitPath, userAgent).run();
+        // 3. Insert into visitor_ip_records ONLY if CF-Connecting-IP was present and valid
+        // (User-Agent collection stopped completely per privacy hardening)
+        if (clientIp) {
+          await env.DB.prepare(
+            'INSERT INTO visitor_ip_records (ip, path) VALUES (?, ?)'
+          ).bind(clientIp, visitPath).run();
+        }
 
-        return jsonResponse({ success: true, recorded: true }, 200, corsHeaders);
+        return jsonResponse({ success: true, recorded: true, ip_stored: Boolean(clientIp) }, 200, corsHeaders);
       }
 
       // 8. GET /api/owner/analytics (Aggregated anonymous stats for authenticated owner)
@@ -424,7 +432,8 @@ export default {
           success: true,
           overview: {
             total_visits: totalRow ? totalRow.count : 0,
-            unique_visitors: uniqueRow ? uniqueRow.count : 0,
+            estimated_unique_browsers: uniqueRow ? uniqueRow.count : 0,
+            unique_visitors: uniqueRow ? uniqueRow.count : 0, // preserved for backward-compatibility
             returning_visitors: returningRow ? returningRow.count : 0,
             visits_today: todayRow ? todayRow.count : 0
           },
@@ -443,17 +452,18 @@ export default {
 
         let limit = parseInt(url.searchParams.get('limit') || '50', 10);
         if (isNaN(limit) || limit <= 0) limit = 50;
-        if (limit > 100) limit = 100;
+        if (limit > 200) limit = 200;
 
+        // Preserves all historical records indefinitely, excludes user_agent
         const { results } = await env.DB.prepare(
-          'SELECT id, ip, path, user_agent, created_at FROM visitor_ip_records ORDER BY id DESC LIMIT ?'
+          'SELECT id, ip, path, created_at FROM visitor_ip_records ORDER BY id DESC LIMIT ?'
         ).bind(limit).all();
 
         return jsonResponse({ success: true, records: results || [] }, 200, corsHeaders);
       }
 
-      // 10. POST /api/owner/analytics/cleanup (Retention cleanup for raw IP records)
-      if (request.method === 'POST' && path === '/api/owner/analytics/cleanup') {
+      // 10. POST /api/owner/analytics/delete (Owner-only manual deletion of IP records)
+      if (request.method === 'POST' && (path === '/api/owner/analytics/delete' || path === '/api/owner/analytics/cleanup')) {
         const sessionToken = extractToken(request);
         const isOwner = await verifyOwnerSession(env.DB, sessionToken);
         if (!isOwner) {
@@ -465,15 +475,23 @@ export default {
           body = await readSafeJson(request, 1024) || {};
         } catch (_) {}
 
-        let days = parseInt(body.days || '30', 10);
-        if (isNaN(days) || days < 1) days = 30;
+        let result;
+        if (body.all === true) {
+          result = await env.DB.prepare('DELETE FROM visitor_ip_records').run();
+        } else if (body.days) {
+          const days = parseInt(body.days, 10);
+          if (isNaN(days) || days < 1) {
+            return jsonResponse({ error: 'Invalid days parameter.' }, 400, corsHeaders);
+          }
+          result = await env.DB.prepare(
+            "DELETE FROM visitor_ip_records WHERE created_at < datetime('now', '-' || ? || ' days')"
+          ).bind(days).run();
+        } else {
+          return jsonResponse({ error: 'Explicit deletion criteria required (e.g. { all: true } or { days: N }). Automatic deletion is disabled.' }, 400, corsHeaders);
+        }
 
-        const result = await env.DB.prepare(
-          "DELETE FROM visitor_ip_records WHERE created_at < datetime('now', '-' || ? || ' days')"
-        ).bind(days).run();
-
-        const purged = result.meta ? result.meta.changes : 0;
-        return jsonResponse({ success: true, purged, retention_days: days }, 200, corsHeaders);
+        const deleted = result.meta ? result.meta.changes : 0;
+        return jsonResponse({ success: true, deleted, message: `Deleted ${deleted} visitor IP record(s).` }, 200, corsHeaders);
       }
 
       return jsonResponse({ error: 'Endpoint not found.' }, 404, corsHeaders);
@@ -572,9 +590,28 @@ async function checkSubmissionRateLimit(db, clientIp) {
 }
 
 /**
+ * Strict IP address validation for Cloudflare CF-Connecting-IP header.
+ * Validates IPv4 and IPv6 formatting. Rejects malformed strings, hostnames, and injection attempts.
+ */
+function isValidIpAddress(ip) {
+  if (typeof ip !== 'string') return false;
+  const trimmed = ip.trim();
+  if (!trimmed) return false;
+
+  // IPv4: 4 octets 0-255 separated by dots
+  const ipv4Regex = /^(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/;
+  if (ipv4Regex.test(trimmed)) return true;
+
+  // IPv6: standard 8-group or compressed with ::
+  const ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
+  return ipv6Regex.test(trimmed);
+}
+
+/**
  * Atomic rate limiting for analytics visits (max 30 pings per 10 minutes per IP).
  */
 async function checkAnalyticsRateLimit(db, clientIp) {
+  if (!clientIp) return true;
   const now = Math.floor(Date.now() / 1000);
   const ipHash = await sha256Hex('analytics_' + clientIp);
   const windowSeconds = 600; // 10 minutes

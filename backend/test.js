@@ -533,14 +533,14 @@ async function runRealIntegrationTests() {
     assert(count429 === 5, `Real D1 Concurrency: Exactly 5 concurrent submissions rate-limited with HTTP 429 (got ${count429})`);
   }
 
-  // 7. Stage 5.7: Real SQLite Visitor IP Tracking & Anonymous Analytics
+  // 7. Stage 5.7 & 5.7.1: Real SQLite Visitor IP Tracking, Anonymous Analytics & Privacy Hardening
   {
-    console.log('\n--- Running Stage 5.7 Analytics & IP Tracking Integration Tests ---');
+    console.log('\n--- Running Stage 5.7.1 Analytics & IP Hardening Integration Tests ---');
     const realIp = '198.51.100.42';
     const fakeIp = '10.0.0.99';
     const visitorAid = 'aid_test_visitor_alpha_99';
 
-    // 7a. Visit recording & CF-Connecting-IP capture (ignoring spoofed headers)
+    // 7a. Visit recording & CF-Connecting-IP capture (User-Agent excluded, spoofed headers ignored)
     const visitReq1 = new Request('http://localhost/api/analytics/visit', {
       method: 'POST',
       headers: {
@@ -554,18 +554,24 @@ async function runRealIntegrationTests() {
     });
     const visitRes1 = await worker.fetch(visitReq1, env);
     assert(visitRes1.status === 200, 'Real D1 Analytics: Visit with CF-Connecting-IP accepted (HTTP 200)');
+    const visitJson1 = await visitRes1.json();
+    assert(visitJson1.ip_stored === true, 'Real D1 Analytics: Valid CF-Connecting-IP triggers ip_stored: true');
 
     // Verify raw IP record in SQLite
-    const ipRecord = realDb.sqlite.prepare('SELECT ip, path, user_agent FROM visitor_ip_records WHERE ip = ?').get(realIp);
+    const ipRecord = realDb.sqlite.prepare('SELECT ip, path, created_at FROM visitor_ip_records WHERE ip = ?').get(realIp);
     assert(ipRecord && ipRecord.ip === realIp && ipRecord.path === '/portfolio',
       'Real D1 Analytics: Captured CF-Connecting-IP stored in visitor_ip_records');
+
+    // Verify user_agent column does NOT exist in visitor_ip_records schema
+    const ipColumns = realDb.sqlite.prepare("PRAGMA table_info(visitor_ip_records)").all().map(c => c.name);
+    assert(!ipColumns.includes('user_agent'),
+      'Real D1 Analytics: user_agent column completely removed from visitor_ip_records schema');
 
     // Verify spoofed IP was NOT stored
     const fakeRecord = realDb.sqlite.prepare('SELECT id FROM visitor_ip_records WHERE ip = ?').get(fakeIp);
     assert(!fakeRecord, 'Real D1 Analytics: Spoofed IP headers (X-Forwarded-For/X-Real-IP) cannot override CF-Connecting-IP');
 
     // Verify raw IP record contains ZERO thoughts or visitor tokens
-    const ipColumns = realDb.sqlite.prepare("PRAGMA table_info(visitor_ip_records)").all().map(c => c.name);
     assert(!ipColumns.includes('token_hash') && !ipColumns.includes('text'),
       'Real D1 Analytics: visitor_ip_records has zero guestbook columns (strict data decoupling)');
 
@@ -579,7 +585,58 @@ async function runRealIntegrationTests() {
     assert(!anonColumns.includes('ip') && !anonColumns.includes('client_ip'),
       'Real D1 Analytics: anonymous_visits table has zero IP address columns');
 
-    // 7b. Returning visitor detection with same AID
+    // 7b. Missing and invalid IP headers testing (Must NEVER store fake 127.0.0.1)
+    const countBeforeMissing = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM visitor_ip_records').get().c;
+
+    // Missing CF-Connecting-IP entirely
+    const missingIpReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aid: 'aid_missing_ip_user', path: '/contact' })
+    });
+    const missingIpRes = await worker.fetch(missingIpReq, env);
+    const missingJson = await missingIpRes.json();
+    assert(missingIpRes.status === 200, 'Real D1 Analytics: Visit without CF-Connecting-IP accepted (HTTP 200)');
+    assert(missingJson.ip_stored === false, 'Real D1 Analytics: Missing CF-Connecting-IP skips IP storage (ip_stored: false)');
+
+    const countAfterMissing = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM visitor_ip_records').get().c;
+    assert(countBeforeMissing === countAfterMissing,
+      'Real D1 Analytics: Missing CF-Connecting-IP creates zero records in visitor_ip_records');
+
+    const fakeLocalhost = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '127.0.0.1'").get();
+    assert(!fakeLocalhost, 'Real D1 Analytics: Never use 127.0.0.1 fallback when IP header is missing');
+
+    // Invalid IP header format
+    const invalidIpReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': 'malformed.ip.value.999'
+      },
+      body: JSON.stringify({ aid: 'aid_invalid_ip_user', path: '/' })
+    });
+    const invalidIpRes = await worker.fetch(invalidIpReq, env);
+    const invalidJson = await invalidIpRes.json();
+    assert(invalidJson.ip_stored === false, 'Real D1 Analytics: Invalid IP format skips IP storage');
+
+    // Spoofed-only headers (no CF-Connecting-IP, but X-Forwarded-For present)
+    const spoofedOnlyReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': '203.0.113.99',
+        'X-Real-IP': '203.0.113.99'
+      },
+      body: JSON.stringify({ aid: 'aid_spoofed_user', path: '/' })
+    });
+    const spoofedOnlyRes = await worker.fetch(spoofedOnlyReq, env);
+    const spoofedJson = await spoofedOnlyRes.json();
+    assert(spoofedJson.ip_stored === false,
+      'Real D1 Analytics: Spoofed X-Forwarded-For cannot substitute for missing CF-Connecting-IP');
+    const spoofedInDb = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '203.0.113.99'").get();
+    assert(!spoofedInDb, 'Real D1 Analytics: Spoofed IP without CF-Connecting-IP was NOT stored');
+
+    // 7c. Returning visitor detection with same AID
     const visitReq2 = new Request('http://localhost/api/analytics/visit', {
       method: 'POST',
       headers: {
@@ -595,7 +652,7 @@ async function runRealIntegrationTests() {
     assert(anonVisit2 && anonVisit2.is_returning === 1,
       'Real D1 Analytics: Subsequent visit with same AID correctly marked as returning (is_returning = 1)');
 
-    // 7c. Non-guestbook visitor tracking
+    // 7d. Non-guestbook visitor tracking
     const thoughtsCountBefore = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM guestbook_thoughts').get().c;
     const lurkerAid = 'aid_lurker_visitor_no_thoughts';
     const lurkerReq = new Request('http://localhost/api/analytics/visit', {
@@ -608,7 +665,7 @@ async function runRealIntegrationTests() {
     assert(thoughtsCountBefore === thoughtsCountAfter,
       'Real D1 Analytics: Visitors who never submit thoughts are recorded in analytics without touching guestbook');
 
-    // 7d. Unauthorized owner access protections
+    // 7e. Unauthorized owner access protections
     const unauthAnalyticsReq = new Request('http://localhost/api/owner/analytics', { method: 'GET' });
     const unauthAnalyticsRes = await worker.fetch(unauthAnalyticsReq, env);
     assert(unauthAnalyticsRes.status === 401,
@@ -619,8 +676,16 @@ async function runRealIntegrationTests() {
     assert(unauthIpsRes.status === 401,
       'Real D1 Analytics: Unauthorized access to /api/owner/analytics/ips rejected with HTTP 401');
 
-    // 7e. Authenticated owner analytics retrieval
-    // Log owner in to get fresh session token
+    const unauthDeleteReq = new Request('http://localhost/api/owner/analytics/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true })
+    });
+    const unauthDeleteRes = await worker.fetch(unauthDeleteReq, env);
+    assert(unauthDeleteRes.status === 401,
+      'Real D1 Analytics: Unauthorized deletion request rejected with HTTP 401');
+
+    // 7f. Authenticated owner analytics retrieval & metric clarification
     const ownerLoginReq = new Request('http://localhost/api/owner/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -640,57 +705,110 @@ async function runRealIntegrationTests() {
       'Real D1 Analytics: Authenticated owner retrieves aggregated analytics (HTTP 200)');
     assert(analyticsData.overview && analyticsData.overview.total_visits >= 3,
       'Real D1 Analytics: Aggregated overview correctly calculates total visits');
-    assert(analyticsData.overview.unique_visitors >= 2,
-      'Real D1 Analytics: Aggregated overview correctly calculates unique visitors');
-    assert(analyticsData.overview.returning_visitors >= 1,
-      'Real D1 Analytics: Aggregated overview correctly calculates returning visitors');
+    assert(analyticsData.overview.estimated_unique_browsers !== undefined,
+      'Real D1 Analytics: Dashboard metric Estimated Unique Browsers is present');
+    assert(analyticsData.overview.estimated_unique_browsers >= 2,
+      'Real D1 Analytics: Aggregated overview correctly calculates unique browsers');
 
     // Verify aggregated analytics JSON contains ZERO IP addresses
     const analyticsJsonStr = JSON.stringify(analyticsData);
     assert(!analyticsJsonStr.includes('198.51.100') && !analyticsJsonStr.includes('203.0.113'),
       'Real D1 Analytics: Aggregated analytics response contains ZERO IP addresses');
 
-    // 7f. Authenticated owner raw IP records retrieval
-    const authIpsReq = new Request('http://localhost/api/owner/analytics/ips?limit=10', {
+    // 7g. Indefinite historical IP records preservation (No automatic 30-day deletion)
+    // Insert simulated 120-day-old and 45-day-old records directly into SQLite
+    realDb.sqlite.exec(`
+      INSERT INTO visitor_ip_records (ip, path, created_at)
+      VALUES ('192.0.2.120', '/ancient-page', datetime('now', '-120 days')),
+             ('192.0.2.45', '/older-page', datetime('now', '-45 days'));
+    `);
+
+    // Perform multiple ordinary analytics visits and owner requests
+    const regularVisitReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.77' },
+      body: JSON.stringify({ aid: 'aid_normal_routine_visitor', path: '/' })
+    });
+    await worker.fetch(regularVisitReq, env);
+    await worker.fetch(new Request('http://localhost/api/owner/analytics', {
+      headers: { 'Authorization': `Bearer ${ownerSessionToken}` }
+    }), env);
+
+    // Verify historical records remain intact indefinitely
+    const ancientRecord = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.120'").get();
+    const olderRecord = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.45'").get();
+    assert(ancientRecord && olderRecord,
+      'Real D1 Analytics: Historical IP records preserved indefinitely; ordinary requests never auto-delete');
+
+    // Authenticated owner raw IP records retrieval includes older records
+    const authIpsReq = new Request('http://localhost/api/owner/analytics/ips?limit=50', {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${ownerSessionToken}` }
     });
     const authIpsRes = await worker.fetch(authIpsReq, env);
     const ipsData = await authIpsRes.json();
-    assert(authIpsRes.status === 200 && Array.isArray(ipsData.records) && ipsData.records.length >= 3,
+    assert(authIpsRes.status === 200 && Array.isArray(ipsData.records),
       'Real D1 Analytics: Authenticated owner can query raw IP records via /api/owner/analytics/ips');
-    assert(ipsData.records.some(r => r.ip === realIp),
-      'Real D1 Analytics: Raw IP record matching captured CF-Connecting-IP returned in owner list');
+    assert(ipsData.records.some(r => r.ip === '192.0.2.120'),
+      'Real D1 Analytics: Historical 120-day-old record displayed in owner IP history');
+    assert(!ipsData.records.some(r => r.user_agent !== undefined),
+      'Real D1 Analytics: IP records response strictly excludes user_agent');
 
-    // 7g. Retention cleanup
-    // Insert simulated 35-day-old record directly into SQLite
-    realDb.sqlite.exec(`
-      INSERT INTO visitor_ip_records (ip, path, created_at)
-      VALUES ('192.0.2.222', '/old-page', datetime('now', '-35 days'));
-    `);
-    const oldExists = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.222'").get();
-    assert(oldExists, 'Real D1 Analytics: Simulated 35-day-old IP record inserted for retention test');
-
-    const cleanupReq = new Request('http://localhost/api/owner/analytics/cleanup', {
+    // 7h. Manual deletion requires explicit criteria (Automatic/empty deletion rejected)
+    const emptyDeleteReq = new Request('http://localhost/api/owner/analytics/delete', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${ownerSessionToken}`
-      },
-      body: JSON.stringify({ days: 30 })
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ownerSessionToken}` },
+      body: JSON.stringify({})
     });
-    const cleanupRes = await worker.fetch(cleanupReq, env);
-    const cleanupData = await cleanupRes.json();
-    assert(cleanupRes.status === 200 && cleanupData.purged >= 1,
-      'Real D1 Analytics: Retention cleanup purges records older than 30 days');
+    const emptyDeleteRes = await worker.fetch(emptyDeleteReq, env);
+    assert(emptyDeleteRes.status === 400,
+      'Real D1 Analytics: Manual deletion without explicit criteria rejected with HTTP 400');
 
-    const oldAfterCleanup = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.222'").get();
-    assert(!oldAfterCleanup, 'Real D1 Analytics: Expired IP record permanently deleted from database');
+    // Explicit manual owner deletion of records older than 90 days
+    const scopedDeleteReq = new Request('http://localhost/api/owner/analytics/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ownerSessionToken}` },
+      body: JSON.stringify({ days: 90 })
+    });
+    const scopedDeleteRes = await worker.fetch(scopedDeleteReq, env);
+    const scopedJson = await scopedDeleteRes.json();
+    assert(scopedDeleteRes.status === 200 && scopedJson.deleted >= 1,
+      'Real D1 Analytics: Explicit owner deletion with days parameter succeeds');
 
-    const recentStillExists = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = ?").get(realIp);
-    assert(recentStillExists, 'Real D1 Analytics: Recent IP records strictly preserved during retention cleanup');
+    const ancientAfterDelete = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.120'").get();
+    assert(!ancientAfterDelete, 'Real D1 Analytics: Explicitly deleted 120-day-old record purged');
 
-    // 7h. Analytics rate limiting (30 pings per 10 minutes)
+    const olderStillExists = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.45'").get();
+    assert(olderStillExists, 'Real D1 Analytics: 45-day-old record preserved when deleting >90 days');
+
+    // 7i. Migration Verification Test (0002_remove_user_agent.sql)
+    // Create simulated legacy table with user_agent, populate with rows, run migration, verify schema and data
+    realDb.sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS legacy_test_ips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT NOT NULL,
+        path TEXT NOT NULL DEFAULT '/',
+        user_agent TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO legacy_test_ips (ip, path, user_agent) VALUES ('198.51.100.1', '/page1', 'OldAgent/1.0');
+    `);
+    const fs = await import('fs');
+    const path = await import('path');
+    const migrationSql = fs.readFileSync(path.join(__dirname, 'migrations', '0002_remove_user_agent.sql'), 'utf-8');
+    // Adapt table name for isolated test
+    const testMigrationSql = migrationSql
+      .replace(/visitor_ip_records_dg_tmp/g, 'legacy_test_ips_tmp')
+      .replace(/visitor_ip_records/g, 'legacy_test_ips')
+      .replace(/idx_visitor_ip_created_at/g, 'idx_legacy_test_ips_created_at');
+    realDb.sqlite.exec(testMigrationSql);
+
+    const migratedCols = realDb.sqlite.prepare("PRAGMA table_info(legacy_test_ips)").all().map(c => c.name);
+    assert(!migratedCols.includes('user_agent'), 'Real D1 Analytics: Migration safely removes user_agent column');
+    const migratedRow = realDb.sqlite.prepare("SELECT ip, path FROM legacy_test_ips WHERE ip = '198.51.100.1'").get();
+    assert(migratedRow && migratedRow.path === '/page1', 'Real D1 Analytics: Migration preserves all historical rows and paths');
+
+    // 7j. Analytics rate limiting (30 pings per 10 minutes)
     const floodIp = '203.0.113.199';
     let hitRateLimit = false;
     for (let i = 0; i < 32; i++) {

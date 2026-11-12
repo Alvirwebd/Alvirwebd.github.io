@@ -3279,7 +3279,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
           <!-- Discreet Privacy Notice -->
           <div class="pt-2 text-[9.5px] text-[#44372E]/55 font-mono text-center">
-            🔒 Anonymous metrics and basic connection logs are collected to protect against abuse and monitor uptime. No individual visitors are tracked or tied to notes.
+            🔒 Anonymous metrics and basic connection logs are collected to protect against abuse and monitor uptime. Historical records are preserved indefinitely. No individual visitors are tracked or tied to notes.
           </div>
 
           <!-- Owner Administrative Notes & Analytics View (Active only when authenticated) -->
@@ -3312,8 +3312,9 @@ Duration: 2022 – Present (6th Semester)<br><br>
                   <div id="statTotalVisits" class="text-lg font-bold text-[#315A4A] mt-0.5">-</div>
                 </div>
                 <div class="p-2.5 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-center shadow-xs">
-                  <div class="text-[9.5px] text-[#44372E]/60 uppercase tracking-wider font-bold">Unique Visitors</div>
+                  <div class="text-[9.5px] text-[#44372E]/60 uppercase tracking-wider font-bold">Estimated Unique Browsers</div>
                   <div id="statUniqueVisitors" class="text-lg font-bold text-[#234034] mt-0.5">-</div>
+                  <div class="text-[8px] text-[#44372E]/50 font-normal leading-tight mt-0.5">Browser-keyed; does not represent individual people</div>
                 </div>
                 <div class="p-2.5 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-center shadow-xs">
                   <div class="text-[9.5px] text-[#44372E]/60 uppercase tracking-wider font-bold">Returning</div>
@@ -3349,9 +3350,9 @@ Duration: 2022 – Present (6th Semester)<br><br>
                 <div class="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <span class="font-bold text-[#234034] text-[11px]">🛡️ Raw Visitor IP Records (Owner Only)</span>
-                    <p class="text-[9.5px] text-[#44372E]/60 font-sans">Decoupled from thoughts and tokens. 30-day retention.</p>
+                    <p class="text-[9.5px] text-[#44372E]/60 font-sans">Decoupled from thoughts and tokens. Preserved indefinitely. Manual deletion only.</p>
                   </div>
-                  <button type="button" id="btnPurgeIpRecords" onclick="purgeOwnerIpRecords()" style="background-color: #8B5E3C; color: #FFFDF6;" class="px-2.5 py-1 text-[10px] font-mono font-bold rounded-[3px] border border-[#44372E]/40 shadow-xs hover:opacity-90 transition">🧹 Purge &gt;30d Old</button>
+                  <button type="button" id="btnDeleteIpRecords" onclick="deleteOwnerIpRecords()" style="background-color: #8B5E3C; color: #FFFDF6;" class="px-2.5 py-1 text-[10px] font-mono font-bold rounded-[3px] border border-[#44372E]/40 shadow-xs hover:opacity-90 transition">🗑️ Delete IP History</button>
                 </div>
                 <div id="purgeStatusMsg" class="hidden text-[10px] text-emerald-800 bg-emerald-100 p-1.5 rounded"></div>
                 <div id="ownerIpRecordsList" class="max-h-48 overflow-y-auto space-y-1 text-[10px] divide-y divide-[#44372E]/10">
@@ -5184,7 +5185,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         const elToday = document.getElementById('statVisitsToday');
 
         if (elTotal) elTotal.textContent = data.overview.total_visits ?? 0;
-        if (elUnique) elUnique.textContent = data.overview.unique_visitors ?? 0;
+        if (elUnique) elUnique.textContent = data.overview.estimated_unique_browsers ?? data.overview.unique_visitors ?? 0;
         if (elReturning) elReturning.textContent = data.overview.returning_visitors ?? 0;
         if (elToday) elToday.textContent = data.overview.visits_today ?? 0;
 
@@ -5201,7 +5202,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
                 <div class="space-y-0.5">
                   <div class="flex justify-between text-[10px] text-[#44372E]/80 font-mono">
                     <span>${escapeHtml(d.date)}</span>
-                    <span><b>${d.visits}</b> visit${d.visits === 1 ? '' : 's'} (${d.uniques || 0} unique)</span>
+                    <span><b>${d.visits}</b> visit${d.visits === 1 ? '' : 's'} (${d.uniques || 0} unique browser${d.uniques === 1 ? '' : 's'})</span>
                   </div>
                   <div class="w-full bg-[#EAE3D5] rounded-full h-2 overflow-hidden border border-[#44372E]/20">
                     <div class="bg-[#315A4A] h-2 rounded-full" style="width: ${pct}%"></div>
@@ -5256,17 +5257,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
           const dateStr = new Date(r.created_at).toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
           });
-          const uaTruncated = r.user_agent ? (r.user_agent.length > 50 ? r.user_agent.substring(0, 50) + '...' : r.user_agent) : 'Unknown';
           return `
-            <div class="py-1 flex items-start justify-between gap-2 font-mono">
-              <div class="space-y-0.5 min-w-0">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="font-bold text-[#315A4A]">${escapeHtml(r.ip)}</span>
-                  <span class="text-[#44372E]/50 text-[9px]">${escapeHtml(r.path || '/')}</span>
-                </div>
-                <div class="text-[#44372E]/60 text-[9px] truncate max-w-[280px]" title="${escapeHtml(r.user_agent || '')}">${escapeHtml(uaTruncated)}</div>
+            <div class="py-1.5 flex items-center justify-between gap-2 font-mono">
+              <div class="flex items-center gap-2 flex-wrap min-w-0">
+                <span class="font-bold text-[#315A4A] text-xs">${escapeHtml(r.ip)}</span>
+                <span class="text-[#44372E]/60 text-[10px] bg-[#EAE3D5] px-1.5 py-0.5 rounded border border-[#44372E]/20">${escapeHtml(r.path || '/')}</span>
               </div>
-              <div class="text-[9px] text-[#44372E]/60 text-right whitespace-nowrap shrink-0">${dateStr}</div>
+              <div class="text-[9.5px] text-[#44372E]/60 text-right whitespace-nowrap shrink-0">${dateStr}</div>
             </div>
           `;
         }).join('');
@@ -5275,42 +5272,45 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
     }
 
-    async function purgeOwnerIpRecords() {
-      if (!confirm('Purge raw visitor IP records older than 30 days?')) return;
+    async function deleteOwnerIpRecords() {
+      if (!confirm('Permanently delete all visitor IP records? Historical records are preserved indefinitely until you explicitly delete them.')) return;
       const session = sessionStorage.getItem('alvir_owner_session');
       if (!session) return;
       const endpoint = getGuestbookEndpoint();
       if (!endpoint) return;
 
-      const btn = document.getElementById('btnPurgeIpRecords');
+      const btn = document.getElementById('btnDeleteIpRecords');
       const msg = document.getElementById('purgeStatusMsg');
       if (btn) btn.disabled = true;
 
       try {
-        const res = await fetch(`${endpoint}/api/owner/analytics/cleanup`, {
+        const res = await fetch(`${endpoint}/api/owner/analytics/delete`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${session}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ days: 30 })
+          body: JSON.stringify({ all: true })
         });
         const data = await res.json().catch(() => null);
         if (msg) {
-          msg.textContent = data?.message || (res.ok ? 'Purge completed.' : 'Purge failed.');
+          msg.textContent = data?.message || (res.ok ? 'Records deleted successfully.' : 'Deletion failed.');
           msg.classList.remove('hidden');
           setTimeout(() => { msg.classList.add('hidden'); }, 4000);
         }
         await loadOwnerIpRecords();
       } catch (e) {
         if (msg) {
-          msg.textContent = 'Network error executing purge.';
+          msg.textContent = 'Network error executing deletion.';
           msg.classList.remove('hidden');
         }
       } finally {
         if (btn) btn.disabled = false;
       }
     }
+
+    // Retain purgeOwnerIpRecords as alias for backward-compatibility
+    const purgeOwnerIpRecords = deleteOwnerIpRecords;
 
     async function sendVisitorAnalytics() {
       try {
@@ -5537,6 +5537,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.ownerLogout = ownerLogout;
     window.switchOwnerTab = switchOwnerTab;
     window.purgeOwnerIpRecords = purgeOwnerIpRecords;
+    window.deleteOwnerIpRecords = deleteOwnerIpRecords;
     window.loadOwnerAnalytics = loadOwnerAnalytics;
     window.loadOwnerIpRecords = loadOwnerIpRecords;
     window.sendVisitorAnalytics = sendVisitorAnalytics;
