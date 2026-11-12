@@ -1921,21 +1921,29 @@
       border-radius: 14px;
       box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6), 0 14px 32px -6px rgba(0, 0, 0, 0.6);
       max-width: 310px;
+      min-width: 0;
+      box-sizing: border-box;
+      word-break: break-word;
       transition: opacity 0.3s ease, transform 0.3s ease;
     }
     @media (min-width: 768px) and (min-height: 601px) {
       .welcome-card {
-        top: calc(var(--safe-t) + 72px);
+        top: calc(var(--safe-t) + 90px);
         right: calc(var(--safe-r) + 20px);
       }
     }
-    @media (max-width: 767px), (max-height: 600px) {
+    @media (max-width: 767px) and (min-height: 601px) {
       .welcome-card {
         top: calc(var(--safe-t) + 58px);
         right: calc(var(--safe-r) + 12px);
         left: calc(var(--safe-l) + 12px);
         max-width: min(340px, calc(100vw - var(--safe-l) - var(--safe-r) - 24px));
         margin: 0 auto;
+      }
+    }
+    @media (max-height: 600px) {
+      .welcome-card {
+        display: none !important;
       }
     }
   </style>
@@ -1953,7 +1961,7 @@
   <!-- =========================================================================
        LUXURY, CUTE & TRENDY TOP BARS (DYNAMIC ISLAND STYLE)
        ========================================================================= -->
-  <header id="roomHeader" class="absolute top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none transition-opacity duration-300">
+  <header id="roomHeader" class="absolute top-4 left-4 right-4 z-25 flex items-center justify-between pointer-events-none transition-opacity duration-300">
     
     <!-- Top Left: Identity Nameplate (flat ivory plate, pixel avatar, hanko stamp) -->
     <div class="relative pointer-events-auto">
@@ -2051,6 +2059,7 @@
        STAGE 4: WELCOME CARD (DISMISSIBLE, NON-INTRUSIVE FOR FIRST-TIME VISITORS)
        ========================================================================= -->
   <aside id="welcomeCard" aria-label="Welcome greeting"
+         style="display: none;"
          class="welcome-card fixed z-20 pointer-events-auto">
     <div class="p-3 sm:p-3.5">
       <!-- Top header line with pulse dot and close button -->
@@ -2069,7 +2078,7 @@
       <div class="mt-1.5">
         <div class="font-retro text-[13px] text-[#EAE3D5] leading-snug">Welcome to my workspace</div>
         <p class="font-mono text-[9.5px] text-[#EAE3D5]/65 mt-1 leading-relaxed">
-          Pull up a chair to boot <span class="text-[#347E79] font-semibold">AlvirOS</span>, explore my featured projects, or leave a thought in the desk notebook.
+          Pull up a chair to boot <span class="text-[#45A19B] font-semibold">AlvirOS</span>, explore my featured projects, or leave a thought in the desk notebook.
         </p>
       </div>
 
@@ -2080,12 +2089,23 @@
           <span>FEATURED PROJECTS</span> <span class="text-[9px]">★</span>
         </button>
         <button type="button" onclick="dismissWelcomeCard()"
-                class="text-[9px] font-mono text-[#EAE3D5]/45 hover:text-[#EAE3D5]/90 transition cursor-pointer">
+                class="text-[9px] font-mono text-[#EAE3D5]/75 hover:text-[#EAE3D5]/90 transition cursor-pointer">
           Dismiss
         </button>
       </div>
     </div>
   </aside>
+  <script>
+    try {
+      if (localStorage.getItem('alvir_welcome_dismissed') !== 'true') {
+        document.getElementById('welcomeCard').style.display = '';
+      } else {
+        document.getElementById('welcomeCard').dataset.dismissed = 'true';
+      }
+    } catch(e) {
+      document.getElementById('welcomeCard').style.display = '';
+    }
+  </script>
 
   <!-- Tiny pixel stars — ambient decorations -->
   <svg class="twinkle hidden md:block fixed left-[22%] top-[20%] z-[6] pointer-events-none" width="10" height="10" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><path d="M5 0v10M0 5h10M3 3l4 4M7 3 3 7" stroke="#D7AD49" stroke-width="1"/></svg>
@@ -4009,6 +4029,9 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (_wc) {
         _wc.style.opacity = '0';
         _wc.style.pointerEvents = 'none';
+        _wc.style.visibility = 'hidden';
+        _wc.setAttribute('inert', '');
+        _wc.setAttribute('aria-hidden', 'true');
       }
 
       setTimeout(() => {
@@ -4047,13 +4070,16 @@ Duration: 2022 – Present (6th Semester)<br><br>
         document.getElementById('notebookPill').style.opacity = '1';
         document.getElementById('notebookPill').style.pointerEvents = 'auto';
         const _wc = document.getElementById('welcomeCard');
-        if (_wc && !_wc.dataset.dismissed) {
-          try {
-            if (localStorage.getItem('alvir_welcome_dismissed') !== 'true') {
-              _wc.style.opacity = '1';
-              _wc.style.pointerEvents = 'auto';
-            }
-          } catch (err) {}
+        if (_wc) {
+          let isDismissed = _wc.dataset.dismissed === 'true';
+          try { isDismissed = isDismissed || localStorage.getItem('alvir_welcome_dismissed') === 'true'; } catch (err) {}
+          if (!isDismissed) {
+            _wc.style.opacity = '1';
+            _wc.style.pointerEvents = 'auto';
+            _wc.style.visibility = 'visible';
+            _wc.removeAttribute('inert');
+            _wc.removeAttribute('aria-hidden');
+          }
         }
       }, 300);
     }
@@ -4229,6 +4255,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
         card.style.opacity = '0';
         card.style.transform = 'translateY(-8px)';
         card.style.pointerEvents = 'none';
+        card.setAttribute('inert', '');
+        card.setAttribute('aria-hidden', 'true');
         setTimeout(() => {
           if (card.parentNode) card.parentNode.removeChild(card);
         }, 320);
@@ -4239,15 +4267,26 @@ Duration: 2022 – Present (6th Semester)<br><br>
     }
 
     (function initWelcomeCard() {
+      const card = document.getElementById('welcomeCard');
+      if (!card) return;
       try {
         if (localStorage.getItem('alvir_welcome_dismissed') === 'true') {
-          const card = document.getElementById('welcomeCard');
-          if (card) {
-            card.dataset.dismissed = 'true';
-            card.style.display = 'none';
-          }
+          card.dataset.dismissed = 'true';
+          card.style.display = 'none';
+          card.setAttribute('inert', '');
+          card.setAttribute('aria-hidden', 'true');
+        } else if (card.dataset.dismissed !== 'true') {
+          card.style.display = '';
+          card.removeAttribute('inert');
+          card.removeAttribute('aria-hidden');
         }
-      } catch (e) {}
+      } catch (e) {
+        if (card.dataset.dismissed !== 'true') {
+          card.style.display = '';
+          card.removeAttribute('inert');
+          card.removeAttribute('aria-hidden');
+        }
+      }
     })();
 
     window.dismissWelcomeCard = dismissWelcomeCard;
