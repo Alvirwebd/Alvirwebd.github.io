@@ -4117,6 +4117,16 @@ Duration: 2022 – Present (6th Semester)<br><br>
     let camEndPos = CAM_ROOM_POS.clone();
     let camStartTarget = CAM_ROOM_TARGET.clone();
     let camEndTarget = CAM_ROOM_TARGET.clone();
+    const _camLerpTarget = new THREE.Vector3();
+
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let isReducedMotion = reducedMotionQuery.matches;
+    const onReducedMotionChange = (e) => { isReducedMotion = e.matches; };
+    if (typeof reducedMotionQuery.addEventListener === 'function') {
+      reducedMotionQuery.addEventListener('change', onReducedMotionChange);
+    } else if (typeof reducedMotionQuery.addListener === 'function') {
+      reducedMotionQuery.addListener(onReducedMotionChange);
+    }
 
     const mouse = { x: 0, y: 0 };
     window.addEventListener('mousemove', (e) => {
@@ -4132,8 +4142,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       camStartTarget = CAM_ROOM_TARGET.clone();
       camEndTarget = CAM_MONITOR_TARGET.clone();
 
-      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (prefersReducedMotion) {
+      if (isReducedMotion) {
         camera.position.copy(CAM_MONITOR_POS);
         camera.lookAt(CAM_MONITOR_TARGET);
         cameraLerpProgress = 1;
@@ -4235,14 +4244,15 @@ Duration: 2022 – Present (6th Semester)<br><br>
       camStartTarget = CAM_MONITOR_TARGET.clone();
       camEndTarget = CAM_ROOM_TARGET.clone();
 
-      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (prefersReducedMotion) {
+      if (isReducedMotion) {
         camera.position.copy(CAM_ROOM_POS);
         camera.lookAt(CAM_ROOM_TARGET);
         cameraLerpProgress = 1;
       } else {
         cameraLerpProgress = 0;
       }
+      clock.getDelta();
+      renderer.render(scene, camera);
 
       const exitSession = workstationSessionId;
       workstationExitRestoreTimer = setTimeout(() => {
@@ -4270,6 +4280,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
             _wc.removeAttribute('aria-hidden');
           }
         }
+        if (typeof window.__relayoutBeacons === 'function') window.__relayoutBeacons();
       }, 300);
     }
 
@@ -5151,6 +5162,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       window.focusWindow(id);
       syncWindowChrome(el);
       updateTaskbarTabs();
+      if (id === 'winPlayer') updateVisualizerState();
     };
 
     window.closeWindow = function (id) {
@@ -5170,6 +5182,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         });
         updateTaskbarTabs();
       }
+      if (id === 'winPlayer') updateVisualizerState();
     };
 
     window.restoreWindow = function (id) {
@@ -5180,6 +5193,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       window.focusWindow(id);
       syncWindowChrome(el);
       updateTaskbarTabs();
+      if (id === 'winPlayer') updateVisualizerState();
     };
 
     window.minimizeWindow = function (id) {
@@ -5202,6 +5216,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       } else {
         window.restoreWindow(id);
       }
+      if (id === 'winPlayer') updateVisualizerState();
     };
 
     window.toggleMaximize = function (id) {
@@ -5268,6 +5283,9 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const r = el.getBoundingClientRect();
       const w = r.width ? (r.width / scaleX) : (el.offsetWidth || 0);
       const h = r.height ? (r.height / scaleY) : (el.offsetHeight || 0);
+      const wa = workArea();
+      const maxX = Math.max(EDGE, wa.w - w - EDGE);
+      const maxY = Math.max(EDGE, wa.h - h - EDGE);
       const captureEl = (e.currentTarget && e.currentTarget.setPointerCapture) ? e.currentTarget : null;
       dragState = {
         el: el,
@@ -5279,6 +5297,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
         dy: ((p.clientY || 0) - r.top) / scaleY,
         w: w,
         h: h,
+        baseLeft: base.left,
+        baseTop: base.top,
+        scaleX: scaleX,
+        scaleY: scaleY,
+        maxX: maxX,
+        maxY: maxY,
         moved: false,
         captureEl: captureEl
       };
@@ -5298,21 +5322,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
     function moveDrag(e) {
       if (!dragState) return;
       if (dragState.pointerId !== null && e.pointerId != null && e.pointerId !== dragState.pointerId) return;
-      const crt = crtEl();
-      if (!crt) return;
-      const base = crt.getBoundingClientRect();
-      const scaleX = crt.clientWidth ? (base.width / crt.clientWidth) : 1;
-      const scaleY = crt.clientHeight ? (base.height / crt.clientHeight) : 1;
-      const wa = workArea();
       const p = pointerPoint(e);
       const dist = Math.hypot((p.clientX || 0) - dragState.startX, (p.clientY || 0) - dragState.startY);
       if (dist > 3) dragState.moved = true;
-      const maxX = Math.max(EDGE, wa.w - dragState.w - EDGE);
-      const maxY = Math.max(EDGE, wa.h - dragState.h - EDGE);
-      const localX = ((p.clientX || 0) - base.left) / scaleX;
-      const localY = ((p.clientY || 0) - base.top) / scaleY;
-      const x = Math.max(EDGE, Math.min(localX - dragState.dx, maxX));
-      const y = Math.max(EDGE, Math.min(localY - dragState.dy, maxY));
+      const localX = ((p.clientX || 0) - dragState.baseLeft) / dragState.scaleX;
+      const localY = ((p.clientY || 0) - dragState.baseTop) / dragState.scaleY;
+      const x = Math.max(EDGE, Math.min(localX - dragState.dx, dragState.maxX));
+      const y = Math.max(EDGE, Math.min(localY - dragState.dy, dragState.maxY));
       dragState.el.style.left = Math.round(x) + 'px';
       dragState.el.style.top = Math.round(y) + 'px';
       if (e.cancelable) e.preventDefault();
@@ -5498,7 +5514,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       customAudio.play();
       document.getElementById('btnPlayPause').textContent = '⏸ Pause';
       syncAudioUI(true, 'Custom Track');
-      startVisualizerAnimation();
+      updateVisualizerState();
     }
 
     function toggleMusicPlayback() {
@@ -5547,7 +5563,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
       isSynthPlaying = true;
-      startVisualizerAnimation();
+      updateVisualizerState();
 
       synthInterval = setInterval(() => {
         if (!isSynthPlaying) return;
@@ -5587,22 +5603,55 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.addEventListener('keydown', attemptMusicAutoStart, { once: true });
     window.addEventListener('touchstart', attemptMusicAutoStart, { once: true });
 
+    let vizBars = null;
+    function getVizBars() {
+      if (!vizBars) {
+        vizBars = [];
+        for (let i = 1; i <= 8; i++) {
+          const bar = document.getElementById(`bar${i}`);
+          if (bar) vizBars.push(bar);
+        }
+      }
+      return vizBars;
+    }
+
     let vizInterval = null;
     function startVisualizerAnimation() {
       if (vizInterval) return;
+      const bars = getVizBars();
       vizInterval = setInterval(() => {
-        for (let i = 1; i <= 8; i++) {
-          const bar = document.getElementById(`bar${i}`);
-          if (bar) bar.style.height = `${25 + Math.random() * 70}%`;
+        for (let i = 0; i < bars.length; i++) {
+          bars[i].style.height = `${25 + Math.random() * 70}%`;
         }
       }, 120);
     }
+    function pauseVisualizerAnimation() {
+      if (vizInterval) {
+        clearInterval(vizInterval);
+        vizInterval = null;
+      }
+    }
     function stopVisualizerAnimation() {
-      clearInterval(vizInterval);
-      vizInterval = null;
-      for (let i = 1; i <= 8; i++) {
-        const bar = document.getElementById(`bar${i}`);
-        if (bar) bar.style.height = '15%';
+      pauseVisualizerAnimation();
+      const bars = getVizBars();
+      for (let i = 0; i < bars.length; i++) {
+        bars[i].style.height = '15%';
+      }
+    }
+
+    function isAudioActive() {
+      if (isSynthPlaying) return true;
+      if (typeof customAudio !== 'undefined' && customAudio && !customAudio.paused && customAudio.currentTime > 0) return true;
+      return false;
+    }
+
+    function updateVisualizerState() {
+      const win = document.getElementById('winPlayer');
+      const isPlayerVisible = win && win.style.display !== 'none' && !win.classList.contains('is-minimized');
+      if (isPlayerVisible && isAudioActive()) {
+        startVisualizerAnimation();
+      } else {
+        pauseVisualizerAnimation();
       }
     }
 
@@ -5800,11 +5849,15 @@ Duration: 2022 – Present (6th Semester)<br><br>
     let _frameNo = 0;
     function animate() {
       requestAnimationFrame(animate);
+      if (document.hidden) return;
       _frameNo++;
+
+      // When workstation is fully open and entrance transition is complete,
+      // the CRT monitor is 100% opaque and full-screen; pause 3D rendering and dust buffer updates.
+      if (isAtWorkstation && cameraLerpProgress >= 1) return;
 
       const delta = clock.getDelta();
       const time = clock.getElapsedTime();
-      const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       if (cameraLerpProgress < 1) {
         if (isReducedMotion) {
@@ -5817,8 +5870,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
           const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
           camera.position.lerpVectors(camStartPos, camEndPos, easeT);
-          const currentTarget = new THREE.Vector3().lerpVectors(camStartTarget, camEndTarget, easeT);
-          camera.lookAt(currentTarget);
+          _camLerpTarget.lerpVectors(camStartTarget, camEndTarget, easeT);
+          camera.lookAt(_camLerpTarget);
         }
       } else if (!isAtWorkstation && !isReducedMotion) {
         const targetX = CAM_ROOM_POS.x + (mouse.x * 0.28);
@@ -5841,13 +5894,18 @@ Duration: 2022 – Present (6th Semester)<br><br>
         screenGlow.intensity = 1.1;
       }
 
-      // While the full-screen CRT overlay hides the room, render at ~20fps.
-      // The UI inside the workstation keeps running at native speed.
-      if (isAtWorkstation && cameraLerpProgress >= 1 && (_frameNo % 3 !== 0)) return;
-
       renderer.render(scene, camera);
     }
     animate();
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        clock.getDelta();
+        if (!isAtWorkstation || cameraLerpProgress < 1) {
+          renderer.render(scene, camera);
+        }
+      }
+    });
 
     /* Resize / orientation changes (including the mobile URL-bar collapse)
        are debounced — iOS fires dozens of resize events while scrolling. */
@@ -5864,6 +5922,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     }
     var _resizeTimer = null;
     function scheduleResize() {
+      if (typeof dragState !== 'undefined' && dragState) endDrag();
       clearTimeout(_resizeTimer);
       _resizeTimer = setTimeout(resizeScene, 120);
     }
@@ -6128,7 +6187,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
         }
       }
 
-      function relayout() { band.ready = false; lastSig = ''; measure(); layout(); }
+      function relayout() { band.ready = false; lastSig = ''; lastCamX = null; measure(); layout(); }
+      window.__relayoutBeacons = relayout;
 
       relayout();
       window.addEventListener('resize', relayout);
@@ -6138,15 +6198,27 @@ Duration: 2022 – Present (6th Semester)<br><br>
         try { new ResizeObserver(relayout).observe(header); new ResizeObserver(relayout).observe(footer); } catch (e) {}
       }
 
-      /* the beacons drift with the slow camera parallax, so ~12fps is plenty */
+      /* the beacons drift with camera parallax and transitions; only layout when camera moves or layout is dirtied */
       var lastRun = 0;
+      var lastCamX = null, lastCamY = null, lastCamZ = null;
       (function loop(ts) {
         requestAnimationFrame(loop);
         if (document.hidden) return;
         if (typeof isAtWorkstation !== 'undefined' && isAtWorkstation) return;
         if (!ts || ts - lastRun < 80) return;
-        lastRun = ts;
-        layout();
+
+        const camMoved = lastCamX === null ||
+          Math.abs(camera.position.x - lastCamX) > 0.0005 ||
+          Math.abs(camera.position.y - lastCamY) > 0.0005 ||
+          Math.abs(camera.position.z - lastCamZ) > 0.0005;
+
+        if (camMoved || !band.ready) {
+          lastRun = ts;
+          lastCamX = camera.position.x;
+          lastCamY = camera.position.y;
+          lastCamZ = camera.position.z;
+          layout();
+        }
       })();
     })();
 
