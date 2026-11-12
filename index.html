@@ -998,6 +998,10 @@
       cursor: grab;
       touch-action: none;
     }
+    .retro-window:not(.is-active-win) .retro-titlebar {
+      background: linear-gradient(90deg, #808080, #a0a0a0) !important;
+      color: #dcdcdc !important;
+    }
     .retro-titlebar:active { cursor: grabbing; }
 
     .retro-btn {
@@ -1071,6 +1075,8 @@
       border-left-color: #000000;
       border-right-color: #ffffff;
       border-bottom-color: #ffffff;
+      background: #e4e4e4;
+      box-shadow: inset 1px 1px 0 #808080;
     }
 
     .retro-taskbar {
@@ -2960,7 +2966,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
             </div>
             <div class="flex items-center gap-1 win-controls">
               <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winMinesweeper')"><span aria-hidden="true">_</span></button>
-              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winMinesweeper')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max opacity-40 cursor-default" title="Maximize" aria-label="Maximize" aria-pressed="false" disabled><span aria-hidden="true">□</span></button>
               <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winMinesweeper')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
@@ -4058,6 +4064,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (!isAtWorkstation) return;
       isAtWorkstation = false;
       lastWorkstationExitTime = Date.now();
+      const startMenu = document.getElementById('crtStartMenu');
+      if (startMenu) startMenu.style.display = 'none';
       document.getElementById('monitorContainer').classList.remove('active-workstation');
 
       camStartPos = camera.position.clone();
@@ -4551,12 +4559,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
     function workArea() {
       const crt = crtEl();
       if (!crt) return { w: window.innerWidth, h: window.innerHeight };
-      const r = crt.getBoundingClientRect();
       const bar = crt.querySelector('.retro-taskbar');
-      const barH = bar ? (bar.getBoundingClientRect().height || 38) : 38;
+      const barH = bar ? (bar.offsetHeight || 38) : 38;
       return {
-        w: r.width || window.innerWidth,
-        h: Math.max(160, (r.height || window.innerHeight) - barH)
+        w: crt.clientWidth || window.innerWidth,
+        h: Math.max(160, (crt.clientHeight || window.innerHeight) - barH)
       };
     }
 
@@ -4565,12 +4572,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
     }
 
     function windowBox(el) {
-      const crt = crtEl();
-      const base = crt ? crt.getBoundingClientRect() : { left: 0, top: 0 };
-      const r = el.getBoundingClientRect();
-      const w = r.width || el.offsetWidth || 0;
-      const h = r.height || el.offsetHeight || 0;
-      return { x: r.left - base.left, y: r.top - base.top, w: w, h: h };
+      return {
+        x: el.offsetLeft || 0,
+        y: el.offsetTop || 0,
+        w: el.offsetWidth || 0,
+        h: el.offsetHeight || 0
+      };
     }
 
     function boxesOverlap(a, b) {
@@ -4646,6 +4653,9 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const box = windowBox(el);
       const w = box.w || el.offsetWidth || 0;
       const h = box.h || el.offsetHeight || 0;
+      if (w > wa.w - 2 * EDGE) {
+        el.style.width = Math.max(160, wa.w - 2 * EDGE) + 'px';
+      }
       let x = box.x, y = box.y, moved = false;
       if (x < EDGE) { x = EDGE; moved = true; }
       if (y < EDGE) { y = EDGE; moved = true; }
@@ -4706,8 +4716,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
         btn.setAttribute('aria-label', meta.title + (minimized ? ' (minimized)' : ''));
         if (isActive) btn.setAttribute('aria-current', 'true');
         btn.onclick = function () {
-          if (win.classList.contains('is-minimized')) window.restoreWindow(id);
-          else window.focusWindow(id);
+          if (win.classList.contains('is-minimized')) {
+            window.restoreWindow(id);
+          } else if (isActive) {
+            window.minimizeWindow(id);
+          } else {
+            window.focusWindow(id);
+          }
         };
         bar.appendChild(btn);
       }
@@ -4723,6 +4738,28 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (!el) return;
       highestZ += 2;
       el.style.zIndex = highestZ;
+
+      if (highestZ >= 98) {
+        const openWins = WIN_ORDER
+          .map(wId => document.getElementById(wId))
+          .filter(win => win && win.style.display !== 'none')
+          .sort((a, b) => (parseInt(a.style.zIndex, 10) || 0) - (parseInt(b.style.zIndex, 10) || 0));
+        let baseZ = 30;
+        openWins.forEach(win => {
+          win.style.zIndex = baseZ;
+          baseZ += 2;
+        });
+        highestZ = baseZ - 2;
+      }
+
+      WIN_ORDER.forEach(wId => {
+        const win = document.getElementById(wId);
+        if (win) {
+          if (wId === id) win.classList.add('is-active-win');
+          else win.classList.remove('is-active-win');
+        }
+      });
+
       updateTaskbarTabs();
     };
 
@@ -4748,7 +4785,17 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (dragState && dragState.el === el) endDrag();
       el.style.display = 'none';
       el.classList.remove('is-minimized');
-      updateTaskbarTabs();
+      el.classList.remove('is-active-win');
+      const nextId = activeWindowId();
+      if (nextId) {
+        window.focusWindow(nextId);
+      } else {
+        WIN_ORDER.forEach(wId => {
+          const win = document.getElementById(wId);
+          if (win) win.classList.remove('is-active-win');
+        });
+        updateTaskbarTabs();
+      }
     };
 
     window.restoreWindow = function (id) {
@@ -4757,6 +4804,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       el.style.display = 'flex';
       el.classList.remove('is-minimized');
       window.focusWindow(id);
+      syncWindowChrome(el);
       updateTaskbarTabs();
     };
 
@@ -4764,12 +4812,26 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const el = document.getElementById(id);
       if (!el) return;
       if (dragState && dragState.el === el) endDrag();
-      if (windowOpen(el)) el.classList.add('is-minimized');
-      else window.restoreWindow(id);
-      updateTaskbarTabs();
+      if (windowOpen(el)) {
+        el.classList.add('is-minimized');
+        el.classList.remove('is-active-win');
+        const nextId = activeWindowId();
+        if (nextId) {
+          window.focusWindow(nextId);
+        } else {
+          WIN_ORDER.forEach(wId => {
+            const win = document.getElementById(wId);
+            if (win) win.classList.remove('is-active-win');
+          });
+          updateTaskbarTabs();
+        }
+      } else {
+        window.restoreWindow(id);
+      }
     };
 
     window.toggleMaximize = function (id) {
+      if (id === 'winMinesweeper') return;
       const el = document.getElementById(id);
       if (!el || isCompact()) return;
       if (el.classList.contains('is-maximized')) {
@@ -4780,6 +4842,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
           el.style.top = Math.round(saved[1]) + 'px';
           el.style.right = 'auto';
           el.style.bottom = 'auto';
+          clampWindow(el, id);
         } else {
           placeWindow(el, id);
         }
@@ -4831,6 +4894,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
         el: el,
         id: winId,
         pointerId: (e.pointerId == null ? null : e.pointerId),
+        startX: p.clientX || 0,
+        startY: p.clientY || 0,
         dx: (p.clientX || 0) - r.left,
         dy: (p.clientY || 0) - r.top,
         w: w,
@@ -4842,7 +4907,6 @@ Duration: 2022 – Present (6th Semester)<br><br>
       el.style.top = Math.round(r.top - base.top) + 'px';
       el.style.right = 'auto';
       el.style.bottom = 'auto';
-      if (w) el.style.width = Math.round(w) + 'px';
       window.focusWindow(winId);
       if (captureEl && dragState.pointerId !== null) {
         try { captureEl.setPointerCapture(dragState.pointerId); } catch (err) { /* older engines */ }
@@ -4860,13 +4924,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const base = crt.getBoundingClientRect();
       const wa = workArea();
       const p = pointerPoint(e);
-      const maxX = Math.max(4, wa.w - dragState.w - 4);
-      const maxY = Math.max(4, wa.h - dragState.h - 4);
-      const x = Math.max(4, Math.min((p.clientX || 0) - base.left - dragState.dx, maxX));
-      const y = Math.max(4, Math.min((p.clientY || 0) - base.top - dragState.dy, maxY));
+      const dist = Math.hypot((p.clientX || 0) - dragState.startX, (p.clientY || 0) - dragState.startY);
+      if (dist > 3) dragState.moved = true;
+      const maxX = Math.max(EDGE, wa.w - dragState.w - EDGE);
+      const maxY = Math.max(EDGE, wa.h - dragState.h - EDGE);
+      const x = Math.max(EDGE, Math.min((p.clientX || 0) - base.left - dragState.dx, maxX));
+      const y = Math.max(EDGE, Math.min((p.clientY || 0) - base.top - dragState.dy, maxY));
       dragState.el.style.left = Math.round(x) + 'px';
       dragState.el.style.top = Math.round(y) + 'px';
-      dragState.moved = true;
       if (e.cancelable) e.preventDefault();
     }
 
@@ -4918,6 +4983,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       WIN_ORDER.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
+        if (leavingCompact) el.style.width = '';
         if (compact) {
           if (el.classList.contains('is-maximized')) {
             el.dataset.wasMaximized = '1';
@@ -4940,6 +5006,34 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.addEventListener('resize', applyLayoutMode);
     window.addEventListener('orientationchange', () => setTimeout(applyLayoutMode, 150));
     applyLayoutMode();
+
+    /* Delegated CRT window interactions */
+    const crtScreen = crtEl();
+    if (crtScreen) {
+      crtScreen.addEventListener('pointerdown', e => {
+        const win = e.target.closest('.retro-window');
+        if (win && win.id && activeWindowId() !== win.id) {
+          window.focusWindow(win.id);
+        }
+      });
+
+      crtScreen.addEventListener('dblclick', e => {
+        const bar = e.target.closest('.retro-titlebar');
+        if (!bar) return;
+        if (e.target.closest('button, a, input, select, textarea')) return;
+        const win = bar.closest('.retro-window');
+        if (!win || !win.id || win.id === 'winMinesweeper') return;
+        window.toggleMaximize(win.id);
+      });
+    }
+
+    document.addEventListener('click', e => {
+      const menu = document.getElementById('crtStartMenu');
+      if (!menu || menu.style.display !== 'flex') return;
+      const startBtn = document.getElementById('crtBtnStart');
+      if (menu.contains(e.target) || (startBtn && startBtn.contains(e.target))) return;
+      menu.style.display = 'none';
+    });
 
     window.toggleStartMenu = function() {
       const menu = document.getElementById('crtStartMenu');
