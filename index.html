@@ -1265,6 +1265,13 @@
       display: block;
       width: 100% !important;
       height: 100% !important;
+      /* The room owns its own gestures: no scroll, no double-tap zoom, no
+         long-press callout stealing the drag. DOM panels sit above this and
+         keep their own touch-action, so they are unaffected. */
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
     }
 
     /* ---- touch devices: no sticky hover states, comfortable tap targets ---- */
@@ -3876,11 +3883,25 @@ Duration: 2022 – Present (6th Semester)<br><br>
     let camStartTarget = CAM_ROOM_TARGET.clone();
     let camEndTarget = CAM_ROOM_TARGET.clone();
 
+    /* Anything above the canvas that handles its own input. Used both to stop
+       a room gesture from starting on top of the UI and to keep the raycast
+       from firing through a panel. */
+    const SCENE_UI_SELECTOR = '#monitorContainer, #notebookOverlay, #contactModal, ' +
+      '#projectsDrawer, #projectDetail, #roomHeader, #roomFooter, .beacon-pod, ' +
+      '.retro-window, button, a, input, textarea, select, [onclick]';
+
     const mouse = { x: 0, y: 0 };
-    window.addEventListener('mousemove', (e) => {
-      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    });
+
+    /* Parallax look: the room leans toward the pointer. Mouse hover and touch
+       drag feed the same values, so both feel like the same scene. */
+    function updatePointerParallax(clientX, clientY) {
+      const w = window.innerWidth || 1;
+      const h = window.innerHeight || 1;
+      mouse.x = Math.max(-1, Math.min(1, (clientX / w) * 2 - 1));
+      mouse.y = Math.max(-1, Math.min(1, -(clientY / h) * 2 + 1));
+    }
+
+    window.addEventListener('mousemove', (e) => updatePointerParallax(e.clientX, e.clientY));
 
     function enterWorkstation() {
       if (isAtWorkstation) return;
@@ -3945,10 +3966,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
     function handle3DClick(clientX, clientY, e) {
       if (isAtWorkstation) return;
       if (Date.now() - lastWorkstationExitTime < 700) return;
-      if (e && e.target) {
-        if (e.target.closest('#monitorContainer, #notebookOverlay, #contactModal, #projectsDrawer, #roomHeader, #roomFooter, .beacon-pod, button, a, input, textarea')) {
-          return;
-        }
+      if (e && e.target && e.target.closest && e.target.closest(SCENE_UI_SELECTOR)) {
+        return;
       }
       const _rect = renderer.domElement.getBoundingClientRect();
       mouseVector.x = ((clientX - _rect.left) / Math.max(1, _rect.width)) * 2 - 1;
@@ -3966,14 +3985,58 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
     }
 
+    /* ------------------------------------------------------------------
+       Touch: one gesture, two outcomes. A drag looks around the room (the
+       touch equivalent of the mouse parallax); a tap - short, and within a
+       few pixels of where it started - is the only thing that raycasts.
+       touchcancel is handled so a gesture the system takes over can never
+       leave a half-finished drag behind.
+       ------------------------------------------------------------------ */
+    const TOUCH_TAP_SLOP = 12;   /* px */
+    const TOUCH_TAP_MS = 700;
     let _lastTouch = 0;
-    window.addEventListener('touchend', (e) => {
-      if (e.changedTouches && e.changedTouches.length > 0) {
-        _lastTouch = Date.now();
-        const t = e.changedTouches[0];
-        handle3DClick(t.clientX, t.clientY, e);
+    let touchGesture = null;
+
+    function touchStartsOnRoom(e) {
+      const target = e.target;
+      if (!target || !target.closest) return true;
+      return !target.closest(SCENE_UI_SELECTOR);
+    }
+
+    window.addEventListener('touchstart', (e) => {
+      if (!e.touches || e.touches.length !== 1 || !touchStartsOnRoom(e)) {
+        touchGesture = null;      /* multi-touch, or the touch belongs to the UI */
+        return;
       }
+      const t = e.touches[0];
+      touchGesture = { x0: t.clientX, y0: t.clientY, t0: Date.now(), moved: 0 };
     }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!touchGesture || !e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - touchGesture.x0;
+      const dy = t.clientY - touchGesture.y0;
+      touchGesture.moved = Math.max(touchGesture.moved, Math.sqrt(dx * dx + dy * dy));
+      /* Ignore the first couple of pixels so a tap cannot nudge the camera. */
+      if (touchGesture.moved > 2) updatePointerParallax(t.clientX, t.clientY);
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      const gesture = touchGesture;
+      touchGesture = null;
+      if (!gesture || !e.changedTouches || e.changedTouches.length === 0) return;
+      _lastTouch = Date.now();
+      const t = e.changedTouches[0];
+      const dx = t.clientX - gesture.x0;
+      const dy = t.clientY - gesture.y0;
+      const travelled = Math.max(gesture.moved, Math.sqrt(dx * dx + dy * dy));
+      const heldFor = Date.now() - gesture.t0;
+      if (travelled > TOUCH_TAP_SLOP || heldFor > TOUCH_TAP_MS) return;  /* that was a drag, not a tap */
+      handle3DClick(t.clientX, t.clientY, e);
+    }, { passive: true });
+
+    window.addEventListener('touchcancel', () => { touchGesture = null; }, { passive: true });
     window.addEventListener('click', (e) => {
       if (Date.now() - _lastTouch < 500) return; // suppress ghost click after touchend
       handle3DClick(e.clientX, e.clientY, e);
