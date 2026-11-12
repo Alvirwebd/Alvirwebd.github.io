@@ -6229,13 +6229,6 @@ Duration: 2022 – Present (6th Semester)<br><br>
     document.getElementById('btnAudioToggle').addEventListener('click', toggleMusicPlayback);
     window.toggleMusicPlayback = toggleMusicPlayback;
     window.stopMusicPlayback = stopMusicPlayback;
-    window.startSynthChords = startSynthChords;
-    window.stopSynthChords = stopSynthChords;
-    window.cleanupAudioLifecycle = cleanupAudioLifecycle;
-    Object.defineProperty(window, 'activeAudioNodes', {
-      get: () => activeAudioNodes,
-      set: (v) => { activeAudioNodes = v; }
-    });
 
     /* =====================================================================
        8. TERMINAL CLI ENGINE
