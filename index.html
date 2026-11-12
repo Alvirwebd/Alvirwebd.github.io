@@ -4046,8 +4046,10 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
       clearTimeout(workstationEntryTimer);
       clearTimeout(workstationTransitionTimer);
+      clearTimeout(workstationExitRestoreTimer);
       workstationEntryTimer = null;
       workstationTransitionTimer = null;
+      workstationExitRestoreTimer = null;
 
       const currentSession = ++workstationSessionId;
       isWorkstationTransitioning = true;
@@ -4073,6 +4075,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     let isWorkstationTransitioning = false;
     let workstationEntryTimer = null;
     let workstationTransitionTimer = null;
+    let workstationExitRestoreTimer = null;
     let workstationSessionId = 0;
 
     let lastWorkstationExitTime = 0;
@@ -4084,8 +4087,10 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
       clearTimeout(workstationEntryTimer);
       clearTimeout(workstationTransitionTimer);
+      clearTimeout(workstationExitRestoreTimer);
       workstationEntryTimer = null;
       workstationTransitionTimer = null;
+      workstationExitRestoreTimer = null;
       workstationSessionId++;
 
       if (!isAtWorkstation) return;
@@ -4102,7 +4107,10 @@ Duration: 2022 – Present (6th Semester)<br><br>
       camEndTarget = CAM_ROOM_TARGET.clone();
       cameraLerpProgress = 0;
 
-      setTimeout(() => {
+      const exitSession = workstationSessionId;
+      workstationExitRestoreTimer = setTimeout(() => {
+        workstationExitRestoreTimer = null;
+        if (isAtWorkstation || workstationSessionId !== exitSession) return;
         document.getElementById('roomHeader').style.opacity = '1';
         document.getElementById('roomFooter').style.opacity = '1';
         document.getElementById('clickPrompt').style.opacity = '1';
