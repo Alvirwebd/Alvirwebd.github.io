@@ -1512,6 +1512,7 @@
       #clickPrompt .charcoal-card {
         padding: 8px 10px !important;
         border-radius: 12px !important;
+        min-width: 200px;
       }
       #clickPrompt .cp-screen { padding: 5px 8px !important; }
       #clickPrompt .cp-title { font-size: 10px !important; }
@@ -1538,7 +1539,8 @@
     @media (max-width: 420px) {
       #notebookPill .np-quote { display: none !important; }
       #clickPrompt .cp-screen { display: none !important; }
-      #clickPrompt .charcoal-card { padding: 7px 9px !important; }
+      #clickPrompt .charcoal-card { padding: 7px 10px !important; min-width: 200px; }
+      #clickPrompt .charcoal-card > div:last-child { margin-top: 0 !important; }
     }
 
     /* =====================================================================
@@ -2201,9 +2203,9 @@
       </div>
       <!-- transport buttons -->
       <div class="flex items-center gap-1 flex-shrink-0">
-        <span id="btnTrackPrev" role="button" tabindex="0" onclick="event.stopPropagation(); selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();event.preventDefault();selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);}" title="Switch Track" aria-label="Switch to other track" class="lw-ico text-[#EAE3D5]/40 hover:text-[#D7AD49] cursor-pointer hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M11 3v10L5 8l6-5Z" fill="currentColor"/><rect x="3" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
+        <span id="btnTrackPrev" role="button" tabindex="0" onclick="event.stopPropagation(); selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();event.preventDefault();selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);}" title="Previous Track" aria-label="Switch to other track" class="lw-ico text-[#EAE3D5]/40 hover:text-[#D7AD49] cursor-pointer hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M11 3v10L5 8l6-5Z" fill="currentColor"/><rect x="3" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
         <span id="audioIcon" class="lw-ico text-[#EAE3D5]/90"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></span>
-        <span id="btnTrackNext" role="button" tabindex="0" onclick="event.stopPropagation(); selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();event.preventDefault();selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);}" title="Switch Track" aria-label="Switch to other track" class="lw-ico text-[#EAE3D5]/40 hover:text-[#D7AD49] cursor-pointer hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M5 3v10l6-5-6-5Z" fill="currentColor"/><rect x="11.4" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
+        <span id="btnTrackNext" role="button" tabindex="0" onclick="event.stopPropagation(); selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();event.preventDefault();selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);}" title="Switch Track (1. Cozy Lo-Fi / 2. Sunset Chill)" aria-label="Switch music track" class="lw-ico text-[#EAE3D5]/40 hover:text-[#D7AD49] cursor-pointer inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M5 3v10l6-5-6-5Z" fill="currentColor"/><rect x="11.4" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
         <span class="status-dot text-emerald-400"></span>
       </div>
     </button>
@@ -2312,9 +2314,9 @@
         </div>
         <div class="cp-sub font-mono text-[8.5px] text-[#EAE3D5]/45 mt-1.5 tracking-wider">MEMORY OK · AUDIO OK · DESK OK</div>
       </div>
-      <div class="flex items-center justify-between mt-2">
-        <span class="font-retro text-[13px] text-[#EAE3D5] tracking-wide">Pull up a chair</span>
-        <span class="px-2.5 py-1 rounded-full bg-[#D7AD49] border border-[#A87F2A] text-[#10151D] font-retro text-[10px] transition-colors duration-200 group-hover:bg-[#EAE3D5]">PRESS START</span>
+      <div class="flex items-center justify-between gap-3 mt-2">
+        <span class="font-retro text-[12px] sm:text-[13px] text-[#EAE3D5] tracking-tight whitespace-nowrap flex-shrink-0">Pull up a chair</span>
+        <span class="px-2.5 py-1 rounded-full bg-[#D7AD49] border border-[#A87F2A] text-[#10151D] font-retro text-[10px] tracking-normal whitespace-nowrap flex-shrink-0 transition-colors duration-200 group-hover:bg-[#EAE3D5]">PRESS START</span>
       </div>
     </div>
     <!-- Stem & Floor Beacon Ring -->
@@ -6017,9 +6019,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
       stopVisualizerAnimation();
     }
 
+    let activeAudioNodes = [];
+
     function startSynthChords() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
       clearInterval(synthInterval);
       isSynthPlaying = true;
       updateVisualizerState();
@@ -6038,11 +6042,17 @@ Duration: 2022 – Present (6th Semester)<br><br>
           const gain = audioCtx.createGain();
           osc.type = 'sine';
           osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-          // +20% volume increase from baseline 0.018 to 0.0216
-          gain.gain.setValueAtTime(0.0216, audioCtx.currentTime);
+          // Master music gain (+10% relative increase from 0.0216 to 0.02376)
+          gain.gain.setValueAtTime(0.02376, audioCtx.currentTime);
           gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8);
           osc.connect(gain);
           gain.connect(audioCtx.destination);
+
+          activeAudioNodes.push(osc);
+          osc.onended = () => {
+            activeAudioNodes = activeAudioNodes.filter(n => n !== osc);
+          };
+
           osc.start();
           osc.stop(audioCtx.currentTime + 1.8);
         });
@@ -6051,7 +6061,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
     function stopSynthChords() {
       isSynthPlaying = false;
-      clearInterval(synthInterval);
+      if (synthInterval) {
+        clearInterval(synthInterval);
+        synthInterval = null;
+      }
+      for (const node of activeAudioNodes) {
+        try { node.stop(); node.disconnect(); } catch (e) {}
+      }
+      activeAudioNodes = [];
       stopVisualizerAnimation();
     }
 
@@ -6067,22 +6084,20 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.addEventListener('keydown', attemptMusicAutoStart, { once: true });
     window.addEventListener('touchstart', attemptMusicAutoStart, { once: true });
 
-    // Best-effort page lifecycle audio cleanup (handles tab close, reload, navigation, and bfcache freeze)
+    // Best-effort page lifecycle audio cleanup (handles tab switch, backgrounding, dismiss, navigation, and BFCache freeze)
     function cleanupAudioLifecycle() {
       stopMusicPlayback();
       if (audioCtx && audioCtx.state !== 'closed') {
-        try { audioCtx.suspend(); } catch (e) {}
+        try { audioCtx.suspend().catch(() => {}); } catch (e) {}
       }
     }
     window.addEventListener('pagehide', cleanupAudioLifecycle);
     window.addEventListener('beforeunload', cleanupAudioLifecycle);
 
-    // Resuming state when restored from back-forward cache (bfcache)
+    // BFCache navigation safety: do NOT automatically restart music on restore; require user interaction
     window.addEventListener('pageshow', (event) => {
-      if (event.persisted && isAudioActive()) {
-        if (audioCtx && audioCtx.state === 'suspended') {
-          audioCtx.resume().catch(() => {});
-        }
+      if (event.persisted) {
+        stopMusicPlayback();
       }
     });
 
@@ -6382,11 +6397,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
     animate();
 
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
+      if (document.hidden) {
+        cleanupAudioLifecycle();
+      } else {
         clock.getDelta();
         if (!isAtWorkstation || cameraLerpProgress < 1) {
           renderer.render(scene, camera);
         }
+        // When returning to the page, do not automatically restart music; deliberate play action required
       }
     });
 
