@@ -947,18 +947,44 @@ async function runRealIntegrationTests() {
     assert(p2Data.records[0].id === 25 && p2Data.records[19].id === 6,
       'PR #25 Pagination: Page 2 correctly ordered id DESC (25 down to 6)');
 
-    // Page 3 with limit=20
+    // Page 3 (Last valid page with limit=20 for 45 records)
     const p3Req = new Request('http://localhost/api/owner/analytics/ips?page=3&limit=20', {
       headers: { 'Authorization': `Bearer ${validSessionToken}` }
     });
     const p3Res = await worker.fetch(p3Req, env);
     const p3Data = await p3Res.json();
-    assert(p3Data.records.length === 5, 'PR #25 Pagination: Page 3 returns remaining 5 records');
-    assert(p3Data.pagination.page === 3, 'PR #25 Pagination: Page 3 pagination.page === 3');
-    assert(p3Data.pagination.has_next === false, 'PR #25 Pagination: Page 3 has_next === false');
-    assert(p3Data.pagination.has_prev === true, 'PR #25 Pagination: Page 3 has_prev === true');
+    assert(p3Data.records.length === 5, 'PR #25 Pagination: Last valid page (page 3) returns remaining 5 records');
+    assert(p3Data.pagination.page === 3, 'PR #25 Pagination: Last valid page pagination.page === 3');
+    assert(p3Data.pagination.has_next === false, 'PR #25 Pagination: Last valid page has_next === false (disables Next button)');
+    assert(p3Data.pagination.has_prev === true, 'PR #25 Pagination: Last valid page has_prev === true (enables Prev button)');
     assert(p3Data.records[0].id === 5 && p3Data.records[4].id === 1,
-      'PR #25 Pagination: Page 3 correctly ordered id DESC (5 down to 1)');
+      'PR #25 Pagination: Last valid page correctly ordered id DESC (5 down to 1)');
+
+    // 8d. Page beyond the last page (page=4 when total_pages=3)
+    const beyondReq = new Request('http://localhost/api/owner/analytics/ips?page=4&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const beyondRes = await worker.fetch(beyondReq, env);
+    const beyondData = await beyondRes.json();
+    assert(beyondRes.status === 200, 'PR #25 Clamping: Page beyond last page succeeds with HTTP 200');
+    assert(beyondData.pagination.page === 3, 'PR #25 Clamping: Requested page 4 clamped to total_pages (3)');
+    assert(beyondData.pagination.total_pages === 3, 'PR #25 Clamping: total_pages remains 3');
+    assert(beyondData.pagination.has_next === false, 'PR #25 Clamping: has_next is false after clamping to last page');
+    assert(beyondData.pagination.has_prev === true, 'PR #25 Clamping: has_prev is true after clamping to last page');
+    assert(beyondData.records.length === 5, 'PR #25 Clamping: Returns last page records instead of empty offset');
+    assert(beyondData.records[0].id === 5, 'PR #25 Clamping: Offset calculated AFTER clamping to valid page');
+
+    // 8e. Extremely large page number (page=999999)
+    const hugePageReq = new Request('http://localhost/api/owner/analytics/ips?page=999999&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const hugePageRes = await worker.fetch(hugePageReq, env);
+    const hugePageData = await hugePageRes.json();
+    assert(hugePageRes.status === 200, 'PR #25 Clamping: Extremely large page number returns HTTP 200');
+    assert(hugePageData.pagination.page === 3, 'PR #25 Clamping: Page 999999 clamped to total_pages (3)');
+    assert(hugePageData.pagination.has_next === false, 'PR #25 Clamping: has_next is false on clamped large page');
+    assert(hugePageData.pagination.has_prev === true, 'PR #25 Clamping: has_prev is true on clamped large page');
+    assert(hugePageData.records.length === 5, 'PR #25 Clamping: Records length matches last page');
 
     // Bounds checking: limit > 100 clamped to 100, page < 1 clamped to 1
     const clampReq = new Request('http://localhost/api/owner/analytics/ips?page=0&limit=999', {
@@ -969,6 +995,45 @@ async function runRealIntegrationTests() {
     assert(clampData.pagination.page === 1, 'PR #25 Pagination: page <= 0 safely clamped to 1');
     assert(clampData.pagination.limit === 100, 'PR #25 Pagination: limit > 100 safely clamped to 100');
     assert(clampData.records.length === 45, 'PR #25 Pagination: Returns all 45 records within clamped limit of 100');
+
+    // 8f. Empty database edge-case handling
+    realDb.sqlite.exec('DELETE FROM visitor_ip_records');
+    const emptyCount = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM visitor_ip_records').get().c;
+    assert(emptyCount === 0, 'PR #25 Empty DB: Database verified empty');
+
+    // Empty DB: page 1
+    const emptyP1Req = new Request('http://localhost/api/owner/analytics/ips?page=1&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const emptyP1Res = await worker.fetch(emptyP1Req, env);
+    const emptyP1Data = await emptyP1Res.json();
+    assert(emptyP1Res.status === 200 && emptyP1Data.success === true, 'PR #25 Empty DB: Returns HTTP 200');
+    assert(emptyP1Data.records.length === 0, 'PR #25 Empty DB: records is empty array');
+    assert(emptyP1Data.pagination.page === 1, 'PR #25 Empty DB: pagination.page === 1');
+    assert(emptyP1Data.pagination.total === 0, 'PR #25 Empty DB: pagination.total === 0');
+    assert(emptyP1Data.pagination.total_pages === 1, 'PR #25 Empty DB: pagination.total_pages === 1');
+    assert(emptyP1Data.pagination.has_next === false, 'PR #25 Empty DB: has_next === false');
+    assert(emptyP1Data.pagination.has_prev === false, 'PR #25 Empty DB: has_prev === false');
+
+    // Empty DB: out-of-bounds page=50
+    const emptyP50Req = new Request('http://localhost/api/owner/analytics/ips?page=50&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const emptyP50Res = await worker.fetch(emptyP50Req, env);
+    const emptyP50Data = await emptyP50Res.json();
+    assert(emptyP50Data.pagination.page === 1, 'PR #25 Empty DB: Out-of-bounds page clamped safely to 1');
+    assert(emptyP50Data.pagination.total_pages === 1, 'PR #25 Empty DB: total_pages remains 1');
+    assert(emptyP50Data.pagination.has_next === false, 'PR #25 Empty DB: has_next is false');
+    assert(emptyP50Data.pagination.has_prev === false, 'PR #25 Empty DB: has_prev is false');
+    assert(emptyP50Data.records.length === 0, 'PR #25 Empty DB: records is empty array');
+
+    // Empty DB: negative page=-10
+    const emptyNegReq = new Request('http://localhost/api/owner/analytics/ips?page=-10&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const emptyNegRes = await worker.fetch(emptyNegReq, env);
+    const emptyNegData = await emptyNegRes.json();
+    assert(emptyNegData.pagination.page === 1, 'PR #25 Empty DB: Negative page clamped safely to 1');
   }
 }
 

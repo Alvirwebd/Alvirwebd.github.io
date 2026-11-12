@@ -5264,6 +5264,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         const data = await res.json();
         const records = Array.isArray(data.records) ? data.records : [];
         const pagination = data.pagination || { page: 1, total_pages: 1, total: records.length, has_prev: false, has_next: false };
+        currentOwnerIpPage = pagination.page || 1;
         totalOwnerIpPages = pagination.total_pages || 1;
 
         if (pageIndicator) {

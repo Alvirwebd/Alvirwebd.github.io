@@ -448,18 +448,19 @@ export default {
           return jsonResponse({ error: 'Unauthorized: Valid owner session required.' }, 401, corsHeaders);
         }
 
-        let page = parseInt(url.searchParams.get('page') || '1', 10);
-        if (isNaN(page) || page < 1) page = 1;
-
         let limit = parseInt(url.searchParams.get('limit') || '20', 10);
         if (isNaN(limit) || limit <= 0) limit = 20;
         if (limit > 100) limit = 100;
 
-        const offset = (page - 1) * limit;
-
         const totalRow = await env.DB.prepare('SELECT COUNT(*) as total FROM visitor_ip_records').first();
         const total = totalRow ? Number(totalRow.total) : 0;
         const totalPages = Math.max(1, Math.ceil(total / limit));
+
+        let page = parseInt(url.searchParams.get('page') || '1', 10);
+        if (isNaN(page) || page < 1) page = 1;
+        if (page > totalPages) page = totalPages;
+
+        const offset = (page - 1) * limit;
 
         // Preserves all historical records indefinitely, excludes user_agent
         const { results } = await env.DB.prepare(
