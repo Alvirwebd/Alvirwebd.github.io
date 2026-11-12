@@ -10,5 +10,5 @@ ALLOWED_ORIGIN = "https://alvirwebd.github.io"
 [[d1_databases]]
 binding = "DB"
 database_name = "alviros-guestbook-db"
-database_id = "<configured-during-deployment>"
+database_id = "610a9a8b-75cb-4442-ae18-cf436eee0556"
 

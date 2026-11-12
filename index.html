@@ -4737,7 +4737,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     // Configured guestbook API endpoint. Must be explicitly set to the deployed Cloudflare Worker URL.
     // For local development or production, define window.ALVIROS_GUESTBOOK_ENDPOINT before loading,
     // or set CONFIGURED_GUESTBOOK_ENDPOINT below.
-    const CONFIGURED_GUESTBOOK_ENDPOINT = '';
+    const CONFIGURED_GUESTBOOK_ENDPOINT = 'https://alviros-guestbook.alviros.workers.dev';
 
     function getGuestbookEndpoint() {
       return (typeof window !== 'undefined' && window.ALVIROS_GUESTBOOK_ENDPOINT) || CONFIGURED_GUESTBOOK_ENDPOINT || '';
