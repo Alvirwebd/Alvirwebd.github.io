@@ -45,7 +45,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Utilities are pre-compiled into tailwind.css (see <link> at the end of <head>).
+       The old cdn.tailwindcss.com runtime build left phones unstyled for seconds —
+       or forever on a flaky connection — because every layout class came from it. -->
 
   <!-- Local Three.js (r128) -->
   <script src="./three.min.js"></script>
@@ -1808,6 +1810,10 @@
       }
     }
   </style>
+
+  <!-- Pre-compiled Tailwind utilities. Kept after the custom styles on purpose:
+       it reproduces the cascade order the CDN injected at runtime. -->
+  <link rel="stylesheet" href="./tailwind.css" />
 </head>
 <body class="relative">
 
@@ -3043,26 +3049,55 @@ Duration: 2022 – Present (6th Semester)<br><br>
     const CAM_MONITOR_TARGET = new THREE.Vector3(0, 0.65, 0.1);
 
     // ── Mobile-aware camera setup ──────────────────────────────────────────
+    /* Framing is driven by how much of the desk should span the *width* of the
+       screen. A 4.2-unit-wide desk on a 0.46 aspect phone used to be squeezed
+       into a thin, 76°-wide band — that is why the table looked tiny and warped.
+       Now each form factor gets a deliberate crop instead. */
     function adaptCameraToViewport() {
-      var aspect = viewportW() / viewportH();
+      var w = viewportW(), h = viewportH();
+      var aspect = w / h;
       camera.aspect = aspect;
-      if (aspect < 0.75) {
-        // Portrait phone (iPhone / Android ≤ 390px wide)
-        camera.fov = Math.min(76, 58 + (0.75 - aspect) * 45);
-        CAM_ROOM_POS.set(0, 1.7, 5.6);
-        CAM_ROOM_TARGET.set(0, 0.55, 0);
-        CAM_MONITOR_POS.set(0, 0.65, 1.55);
-        CAM_MONITOR_TARGET.set(0, 0.65, 0.1);
-      } else if (aspect < 1.1) {
-        // Tablet / landscape phone / iPad
-        camera.fov = 50;
-        CAM_ROOM_POS.set(0, 2.0, 4.9);
-        CAM_ROOM_TARGET.set(0, 0.45, 0);
+
+      var fov = 45, framedWidth = 0, posY = 1.8, targetX = 0, targetY = 0.45;
+
+      if (aspect < 0.8) {
+        // Portrait phone / iPad portrait: close-up on the CRT + notebook
+        fov = 52;
+        framedWidth = w < 600 ? 2.75 : 3.4;
+        posY = 1.95;
+        targetX = -0.06;
+        targetY = 0.8;
+      } else if (aspect < 1.15) {
+        // Portrait tablet / nearly-square windows: a bit more of the desk
+        fov = 50;
+        framedWidth = 3.4;
+        posY = 1.95;
+        targetX = -0.2;
+        targetY = 0.72;
+      } else if (h < 560) {
+        // Landscape phone: use the width, not the missing height
+        fov = 45;
+        framedWidth = 4.8;
+        posY = 1.85;
+        targetX = 0;
+        targetY = 0.55;
+      }
+
+      if (framedWidth > 0) {
+        var dist = framedWidth / (2 * Math.tan(fov * Math.PI / 360) * aspect);
+        dist = Math.max(2.4, Math.min(dist, 12));
+        camera.fov = fov;
+        CAM_ROOM_POS.set(0, posY, dist - 0.15);
+        CAM_ROOM_TARGET.set(targetX, targetY, -0.15);
+        CAM_MONITOR_POS.set(0, 0.68, Math.min(1.55, dist * 0.35));
+        CAM_MONITOR_TARGET.set(0, 0.68, 0.1);
       } else {
-        // Desktop / laptop
+        // Desktop / laptop — keep the composition that already works
         camera.fov = 45;
         CAM_ROOM_POS.set(0, 1.8, 4.2);
         CAM_ROOM_TARGET.set(0, 0.45, 0);
+        CAM_MONITOR_POS.set(0, 0.65, 1.55);
+        CAM_MONITOR_TARGET.set(0, 0.65, 0.1);
       }
       camera.updateProjectionMatrix();
     }
@@ -3071,20 +3106,20 @@ Duration: 2022 – Present (6th Semester)<br><br>
     camera.position.copy(CAM_ROOM_POS);
     camera.lookAt(CAM_ROOM_TARGET);
 
-    // Mobile GPUs: keep the frame budget for the UI. Fewer pixels + no realtime
-    // shadow pass is what makes the room feel "responsive" on Android/iOS.
-    var _isPhoneGPU = window.matchMedia('(max-width: 767px)').matches;
+    // Phones are 2x-3x DPR: render at up to 2x so edges stay crisp (a 1.5x cap
+    // made the desk look soft and jaggy). HiDPI screens already supersample, so
+    // MSAA is only enabled below 2x.
     var _dpr = window.devicePixelRatio || 1;
-    var _rendererAntialias = !_isPhoneGPU && _dpr < 2;
+    var _rendererAntialias = _dpr < 2;
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: _rendererAntialias, powerPreference: _isPhoneGPU ? 'low-power' : 'default' });
+      renderer = new THREE.WebGLRenderer({ antialias: _rendererAntialias });
     } catch (e) {
       renderer = new THREE.WebGLRenderer({ antialias: false });
     }
-    renderer.setPixelRatio(Math.min(_dpr, _isPhoneGPU ? 1.5 : 2));
+    renderer.setPixelRatio(Math.min(_dpr, 2));
     renderer.setSize(viewportW(), viewportH());
-    renderer.shadowMap.enabled = !_isPhoneGPU;
+    renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
@@ -3162,10 +3197,62 @@ Duration: 2022 – Present (6th Semester)<br><br>
       scene.add(leg);
     });
 
-    // Desk Top
+    // Desk Top — procedural walnut grain (no download, sharp at any DPR)
+    const woodCanvas = document.createElement('canvas');
+    woodCanvas.width = 512;
+    woodCanvas.height = 256;
+    const wx = woodCanvas.getContext('2d');
+    const woodBase = wx.createLinearGradient(0, 0, 0, 256);
+    woodBase.addColorStop(0, '#4c2f1c');
+    woodBase.addColorStop(0.45, '#3a2416');
+    woodBase.addColorStop(0.78, '#432a19');
+    woodBase.addColorStop(1, '#2d1b10');
+    wx.fillStyle = woodBase;
+    wx.fillRect(0, 0, 512, 256);
+
+    // long wavy grain running along the desk
+    for (let gi = 0; gi < 95; gi++) {
+      const gy = Math.random() * 256;
+      const amp = 2 + Math.random() * 8;
+      const dark = Math.random() > 0.42;
+      wx.beginPath();
+      wx.moveTo(0, gy);
+      for (let gx = 0; gx <= 512; gx += 32) {
+        wx.quadraticCurveTo(
+          gx + 16,
+          gy + Math.sin(gx * 0.021 + gi * 0.7) * amp,
+          gx + 32,
+          gy + Math.sin((gx + 32) * 0.016 + gi * 0.7) * amp * 0.65
+        );
+      }
+      wx.strokeStyle = dark
+        ? 'rgba(27,15,8,' + (0.10 + Math.random() * 0.16).toFixed(3) + ')'
+        : 'rgba(122,82,48,' + (0.04 + Math.random() * 0.10).toFixed(3) + ')';
+      wx.lineWidth = 0.6 + Math.random() * 1.7;
+      wx.stroke();
+    }
+    // a few knots for character
+    for (let k = 0; k < 3; k++) {
+      const kx = 60 + Math.random() * 390;
+      const ky = 40 + Math.random() * 170;
+      for (let r = 2; r < 16; r += 2.5) {
+        wx.beginPath();
+        wx.ellipse(kx, ky, r * 2.2, r, 0, 0, Math.PI * 2);
+        wx.strokeStyle = 'rgba(26,15,8,0.09)';
+        wx.lineWidth = 1;
+        wx.stroke();
+      }
+    }
+    const woodTex = new THREE.CanvasTexture(woodCanvas);
+    woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping;
+    woodTex.repeat.set(2, 1);
+    if (renderer.capabilities && renderer.capabilities.getMaxAnisotropy) {
+      woodTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    }
+
     const deskTop = new THREE.Mesh(
       new THREE.BoxGeometry(4.2, 0.12, 2.2),
-      new THREE.MeshStandardMaterial({ color: 0x3a2416, roughness: 0.4, metalness: 0.1 })
+      new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.42, metalness: 0.08 })
     );
     deskTop.position.set(0, 0, 0);
     deskTop.receiveShadow = true;
@@ -4113,6 +4200,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
        ===================================================================== */
     const clock = new THREE.Clock();
 
+    /* The room is static (only the camera drifts), so the lamp's shadow map only
+       has to be rendered once. Full-quality contact shadows on every device —
+       including phones — for the cost of a single frame. */
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
+
     let _frameNo = 0;
     function animate() {
       requestAnimationFrame(animate);
@@ -4159,8 +4252,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
        are debounced — iOS fires dozens of resize events while scrolling. */
     function resizeScene() {
       adaptCameraToViewport();
-      var phone = window.matchMedia('(max-width: 767px)').matches;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, phone ? 1.5 : 2));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(viewportW(), viewportH());
       if (!isAtWorkstation) {
         camEndPos && camEndPos.copy(CAM_ROOM_POS);
