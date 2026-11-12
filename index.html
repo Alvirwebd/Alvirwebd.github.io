@@ -1,0 +1,3450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Alvir Shahriar — Cozy Desk & AlvirOS</title>
+
+  <!-- Google Fonts: Plus Jakarta Sans + Caveat + Space Grotesk + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Local Three.js (r128) -->
+  <script src="./three.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #080a0f;
+      font-family: 'IBM Plex Mono', monospace;
+      color: #f8fafc;
+    }
+    .font-mono { font-family: 'IBM Plex Mono', monospace; }
+    .font-retro { font-family: 'DotGothic16', monospace; }
+    .font-hand { font-family: 'DotGothic16', monospace; }
+    .font-display { font-family: 'DotGothic16', monospace; }
+
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .room-vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      box-shadow: inset 0 0 110px rgba(0, 0, 0, 0.88);
+      z-index: 5;
+    }
+
+    /* =========================================================================
+       LASTWAVE STYLE — LIQUID GLASS / MATERIAL 3 EXPRESSIVE
+       ========================================================================= */
+    .lw-glass,
+    .vision-island {
+      position: relative;
+      background: linear-gradient(160deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.045) 45%, rgba(255,255,255,0.075) 100%);
+      backdrop-filter: blur(24px) saturate(180%) brightness(1.06);
+      -webkit-backdrop-filter: blur(24px) saturate(180%) brightness(1.06);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 22px;
+      box-shadow: 0 16px 44px -12px rgba(0,0,0,0.62),
+                  inset 0 1px 0 rgba(255,255,255,0.24),
+                  inset 0 -10px 24px -12px rgba(0,0,0,0.35);
+      transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                  box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                  border-color 0.45s ease, background 0.45s ease;
+      overflow: hidden;
+    }
+    /* Liquid refraction sheen */
+    .lw-glass::before,
+    .vision-island::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(115deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0) 28%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.08) 100%);
+      pointer-events: none;
+    }
+    .lw-glass:hover,
+    .vision-island:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255,255,255,0.24);
+      box-shadow: 0 22px 52px -14px rgba(0,0,0,0.72),
+                  inset 0 1px 0 rgba(255,255,255,0.3),
+                  inset 0 -10px 24px -12px rgba(0,0,0,0.3);
+    }
+    .lw-glass:active,
+    .vision-island:active {
+      transform: translateY(-1px) scale(0.985);
+    }
+
+    /* Floating In-Room Beacon Pods (Cute, Holographic 3D Floating Capsules) */
+    .beacon-pod {
+      filter: drop-shadow(0 16px 36px rgba(0, 0, 0, 0.75));
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .beacon-pod:hover {
+      transform: translateY(-5px) scale(1.04);
+    }
+    .beacon-pod:active {
+      transform: translateY(0) scale(0.97);
+    }
+
+    /* Equalizer Waveform Dancing Bars */
+    .mini-eq {
+      display: flex;
+      align-items: flex-end;
+      gap: 2.5px;
+      height: 14px;
+      width: 16px;
+    }
+    .mini-eq .eq-bar {
+      flex: 1;
+      background: #D7AD49;
+      border-radius: 1px;
+      min-height: 3px;
+    }
+    .mini-eq.playing .eq-bar:nth-child(1) { animation: eqDance 0.7s ease-in-out infinite alternate; }
+    .mini-eq.playing .eq-bar:nth-child(2) { animation: eqDance 0.95s ease-in-out 0.15s infinite alternate; }
+    .mini-eq.playing .eq-bar:nth-child(3) { animation: eqDance 0.6s ease-in-out 0.3s infinite alternate; }
+    .mini-eq.playing .eq-bar:nth-child(4) { animation: eqDance 0.85s ease-in-out 0.1s infinite alternate; }
+
+    @keyframes eqDance {
+      0% { height: 3px; }
+      100% { height: 14px; }
+    }
+    .mini-eq.paused .eq-bar {
+      height: 3px !important;
+      animation: none !important;
+      opacity: 0.35;
+    }
+
+    /* Soft floating bobbing animations */
+    .bob-slow {
+      animation: gentleFloating 4.2s ease-in-out infinite alternate;
+    }
+    .bob-delayed {
+      animation: gentleFloating 4.6s ease-in-out 1.2s infinite alternate;
+    }
+    /* =========================================================================
+       FREUD V3 AI MOBILE NAVIGATION BAR COMPONENT & PROJECTS DRAWER
+       ========================================================================= */
+    /* Desktop tool tray — flat charcoal, inset groove, key icons, lamp indicator */
+    .freud-bar {
+      background: #171C23;
+      border: 1px solid rgba(242, 234, 217, 0.3);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+      border-radius: 18px;
+      padding: 5px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+    .freud-tab {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 7px 14px 7px 7px;
+      border-radius: 13px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: #b3a893;
+      background: transparent;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+      white-space: nowrap;
+    }
+    .freud-tab .tab-ico {
+      width: 30px;
+      height: 30px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #10151D;
+      color: var(--tint, #D7AD49);
+      border: 1px solid color-mix(in srgb, var(--tint, #D7AD49) 40%, transparent);
+      transition: color 0.2s ease, border-color 0.2s ease;
+    }
+    .freud-tab:hover {
+      color: #EAE3D5;
+      background: rgba(242, 234, 217, 0.06);
+      border-color: rgba(242, 234, 217, 0.14);
+    }
+    .freud-tab:hover .tab-ico {
+      color: #EAE3D5;
+      border-color: rgba(242, 234, 217, 0.4);
+    }
+    .freud-tab:active {
+      transform: translateY(1px);
+    }
+    /* tiny amber lamp — active indicator */
+    .freud-tab.is-active {
+      color: #EAE3D5;
+      background: rgba(242, 234, 217, 0.07);
+      border-color: rgba(242, 234, 217, 0.16);
+    }
+    .freud-tab.is-active .tab-ico {
+      color: var(--tint, #D7AD49);
+      border-color: var(--tint, #D7AD49);
+    }
+    .freud-tab.is-active::after {
+      content: '';
+      position: absolute;
+      bottom: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 5px;
+      height: 5px;
+      border-radius: 1px;
+      background: #D7AD49;
+    }
+    .tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 5px;
+      border-radius: 2px;
+      font-size: 9px;
+      font-weight: 600;
+      font-family: 'IBM Plex Mono', monospace;
+      color: #10151D;
+      background: #D7AD49;
+      border: 1px solid #A87F2A;
+    }
+    @media (max-width: 640px) {
+      .freud-bar {
+        padding: 4px;
+        gap: 2px;
+      }
+      .freud-tab {
+        padding: 6px 11px 6px 6px;
+        font-size: 11px;
+        gap: 7px;
+        border-radius: 13px;
+      }
+      .freud-tab .tab-ico {
+        width: 26px;
+        height: 26px;
+      }
+      .freud-tab .tab-text {
+        display: none;
+      }
+      .freud-tab.primary-tab .tab-text {
+        display: inline;
+      }
+    }
+    /* Lucide-style stroke icons */
+    .lw-ico {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .lw-ico svg {
+      width: 17px;
+      height: 17px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .lw-ico.lg svg {
+      width: 21px;
+      height: 21px;
+      stroke-width: 1.6;
+    }
+
+    /* =========================================================================
+       RETRO PHYSICAL MATERIALS — flat ivory paper / charcoal plate / ink borders
+       ========================================================================= */
+    .paper-card {
+      background: #EAE3D5;
+      color: #44372E;
+      border: 1.5px solid #44372E;
+      border-radius: 4px;
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+      position: relative;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .paper-card:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
+    }
+    .charcoal-card {
+      background: #171C23;
+      color: #EAE3D5;
+      border: 1px solid rgba(242, 234, 217, 0.28);
+      border-radius: 4px;
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .charcoal-card:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6);
+    }
+    /* CRT scanline texture overlay */
+    .tex-scan {
+      background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 3px);
+    }
+    /* tiny physical details */
+    .cursor-blink {
+      display: inline-block;
+      width: 7px;
+      height: 12px;
+      background: #e7dcc3;
+      margin-left: 3px;
+      border-radius: 1px;
+      vertical-align: -1px;
+      animation: cursorBlink 1.1s steps(1) infinite;
+    }
+    @keyframes cursorBlink {
+      0%, 55% { opacity: 1; }
+      56%, 100% { opacity: 0; }
+    }
+    .status-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 1px;
+      background: currentColor;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .status-dot::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 1px;
+      border: 1px solid currentColor;
+      animation: statusPulse 2.4s ease-out infinite;
+    }
+    @keyframes statusPulse {
+      0% { transform: scale(0.6); opacity: 0.5; }
+      70%, 100% { transform: scale(1.6); opacity: 0; }
+    }
+    @media (max-width: 640px) {
+      .freud-bar {
+        padding: 5px;
+        gap: 3px;
+        border-radius: 22px;
+      }
+      .freud-tab {
+        padding: 9px 13px;
+        font-size: 11px;
+        gap: 5px;
+        border-radius: 16px;
+      }
+      .freud-tab .tab-text {
+        display: none;
+      }
+      .freud-tab.primary-tab .tab-text {
+        display: inline;
+      }
+    }
+
+    /* Projects Drawer Modal */
+    #projectsDrawer {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(4, 7, 14, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      padding: 0;
+    }
+    @media (min-width: 640px) {
+      #projectsDrawer {
+        align-items: center;
+        padding: 20px;
+      }
+    }
+    #projectsDrawer.drawer-open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .drawer-card {
+      width: 100%;
+      max-width: 820px;
+      max-height: 88vh;
+      background: #171C23;
+      border: 1px solid rgba(242, 234, 217, 0.28);
+      border-radius: 8px 8px 0 0;
+      box-shadow: 0 -6px 0 rgba(0, 0, 0, 0.4), 0 -14px 40px rgba(0, 0, 0, 0.75);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transform: translateY(40px);
+      transition: transform 0.3s cubic-bezier(0.3, 1, 0.4, 1);
+    }
+    @media (min-width: 640px) {
+      .drawer-card {
+        border-radius: 8px 8px 0 0;
+        transform: translateY(20px);
+      }
+    }
+    #projectsDrawer.drawer-open .drawer-card {
+      transform: translateY(0) scale(1);
+    }
+    .book-scroll {
+      counter-reset: proj;
+    }
+    /* Explorer tile — a mini application window per project */
+    .project-grid-card {
+      counter-increment: proj;
+      position: relative;
+      background: #171C23;
+      border: 1px solid rgba(242, 234, 217, 0.22);
+      border-radius: 3px;
+      overflow: hidden;
+      cursor: pointer;
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+      transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+      animation: tileIn 0.3s ease backwards;
+      animation-delay: calc(var(--i, 0) * 40ms);
+    }
+    @keyframes tileIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+    .proj-tile-bar {
+      height: 22px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      background: var(--tint, #D7AD49);
+      color: #10151D;
+      font-family: 'DotGothic16', monospace;
+      font-size: 9.5px;
+      letter-spacing: 0.1em;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .proj-tile-bar .tb-btns {
+      margin-left: auto;
+      display: inline-flex;
+      gap: 3px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
+    .proj-thumb {
+      height: 88px;
+      background: #0E1218;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      position: relative;
+    }
+    .proj-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top;
+      opacity: 0.9;
+      transition: opacity 0.2s ease;
+    }
+    .proj-tile:hover .proj-thumb img { opacity: 1; }
+    .proj-tile:hover {
+      transform: translate(-1px, -1px);
+      border-color: var(--tint, #D7AD49);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6);
+    }
+    .proj-tile:active {
+      transform: translate(2px, 2px);
+      box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+    }
+    .status-led {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px;
+      letter-spacing: 0.12em;
+    }
+    .status-led i {
+      width: 5px;
+      height: 5px;
+      border-radius: 1px;
+      display: inline-block;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+    .status-led.live { color: #315A4A; }
+    .status-led.ongoing { color: #D7AD49; }
+    .status-led.ongoing i { animation: statusPulse 1.8s ease-out infinite; }
+    .status-led.archived { color: #A8ADB4; }
+
+    /* Project detail — classic application window */
+    #projectDetail {
+      position: fixed;
+      inset: 0;
+      z-index: 70;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10, 9, 7, 0.85);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+      padding: 14px;
+    }
+    #projectDetail.pd-open { opacity: 1; pointer-events: auto; }
+    .pd-window {
+      width: 100%;
+      max-width: 700px;
+      max-height: 90vh;
+      overflow-y: auto;
+      background: #171C23;
+      border: 1px solid rgba(242, 234, 217, 0.3);
+      border-radius: 3px;
+      box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.6);
+      transform: translateY(16px) scale(0.98);
+      transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    #projectDetail.pd-open .pd-window { transform: none; }
+    .pd-titlebar {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      font-family: 'DotGothic16', monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: #10151D;
+      border-bottom: 1.5px solid #10151D;
+    }
+    .pd-menubar {
+      display: flex;
+      gap: 14px;
+      padding: 4px 12px;
+      background: #EAE3D5;
+      color: #44372E;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9.5px;
+      letter-spacing: 0.06em;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+    }
+    .pd-menubar span:first-child { text-decoration: underline; }
+    .pd-shot { background: #0E1218; border-bottom: 1px solid rgba(0, 0, 0, 0.5); }
+    .pd-shot img { width: 100%; display: block; }
+    .pd-chip {
+      display: inline-block;
+      padding: 2px 7px;
+      background: #10151D;
+      border: 1px solid rgba(242, 234, 217, 0.25);
+      border-radius: 2px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9.5px;
+      color: #EAE3D5;
+    }
+    .pd-meta {
+      display: flex;
+      border: 1px solid rgba(242, 234, 217, 0.2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .pd-meta > div {
+      flex: 1;
+      padding: 7px 10px;
+      background: #10151D;
+      border-right: 1px solid rgba(242, 234, 217, 0.14);
+    }
+    .pd-meta > div:last-child { border-right: none; }
+    .pd-meta .k {
+      font-family: 'DotGothic16', monospace;
+      font-size: 8.5px;
+      letter-spacing: 0.14em;
+      color: rgba(242, 234, 217, 0.5);
+    }
+    .pd-meta .v {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10.5px;
+      color: #EAE3D5;
+      margin-top: 3px;
+    }
+    .pd-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 3px;
+      font-family: 'DotGothic16', monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+    .pd-btn:active { transform: translateY(1px); }
+    .pd-btn-gh { background: #EAE3D5; color: #10151D; border: 1.5px solid #10151D; box-shadow: 2px 2px 0 rgba(0,0,0,0.5); }
+    .pd-btn-gh:hover { background: #D7AD49; }
+    .pd-btn-demo { background: #347E79; color: #10151D; border: 1.5px solid #10151D; box-shadow: 2px 2px 0 rgba(0,0,0,0.5); }
+    .pd-btn-demo:hover { background: #5AA39D; }
+    .pd-btn-back { background: transparent; color: #EAE3D5; border: 1px solid rgba(242, 234, 217, 0.3); }
+    .pd-btn-back:hover { border-color: #EAE3D5; }
+
+    /* custom pixel tooltips for the dock */
+    .freud-tab[data-tip]::before {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 9px);
+      left: 50%;
+      transform: translateX(-50%) translateY(3px);
+      background: #EAE3D5;
+      color: #10151D;
+      font-family: 'DotGothic16', monospace;
+      font-size: 9.5px;
+      letter-spacing: 0.05em;
+      padding: 3px 8px;
+      border: 1px solid #44372E;
+      border-radius: 2px;
+      box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 40;
+    }
+    .freud-tab[data-tip]:hover::before {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    /* twinkle pixel stars */
+    .twinkle { animation: twinkle 3.2s ease-in-out infinite; }
+    .twinkle.tw2 { animation-duration: 4.5s; animation-delay: 1.4s; }
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 0.8; }
+    }
+
+    /* ---- tile selection (single click) vs open (double click / OPEN btn) ---- */
+    .project-grid-card.selected {
+      border-color: #D7AD49;
+      box-shadow: 0 0 0 1.5px #D7AD49, 3px 3px 0 rgba(0, 0, 0, 0.6);
+    }
+    .project-grid-card.selected::after-lamp { content: none; }
+    .proj-open-btn {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      padding: 4px 10px;
+      background: #D7AD49;
+      color: #10151D;
+      border: 1px solid #10151D;
+      border-radius: 2px;
+      font-family: 'DotGothic16', monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      cursor: pointer;
+      box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transform: translateY(3px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 3;
+    }
+    .proj-open-btn:active { transform: translateY(1px); box-shadow: 1px 1px 0 rgba(0,0,0,0.5); }
+    .project-grid-card:hover .proj-open-btn,
+    .project-grid-card.selected .proj-open-btn { opacity: 1; transform: none; }
+    .project-grid-card[data-dark="1"] .proj-tile-bar { color: #EAE3D5; }
+
+    /* ---- taskbar Start button + menu ---- */
+    .freud-bar { position: relative; }
+    .os-start-btn {
+      background: rgba(215, 173, 73, 0.14);
+      border: 1px solid rgba(215, 173, 73, 0.55);
+    }
+    .os-start-btn:hover { background: rgba(215, 173, 73, 0.3); }
+    .os-start-btn .tab-text { color: #D7AD49; }
+    #osStartMenu {
+      position: absolute;
+      bottom: calc(100% + 12px);
+      left: 8px;
+      min-width: 208px;
+      background: #171C23;
+      border: 1px solid rgba(234, 227, 213, 0.35);
+      border-radius: 3px;
+      box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.55);
+      padding: 5px;
+      display: none;
+      z-index: 45;
+    }
+    #osStartMenu.sm-open { display: block; animation: smPop 0.16s ease; }
+    @keyframes smPop {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+    #osStartMenu .sm-head {
+      font-family: 'DotGothic16', monospace;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      color: #D7AD49;
+      padding: 4px 8px 6px;
+      border-bottom: 1px solid rgba(234, 227, 213, 0.15);
+      margin-bottom: 4px;
+    }
+    #osStartMenu button.sm-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      text-align: left;
+      padding: 8px 9px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      color: #EAE3D5;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10.5px;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.12s ease, border-color 0.12s ease;
+    }
+    #osStartMenu button.sm-item:hover {
+      background: rgba(215, 173, 73, 0.16);
+      border-color: rgba(215, 173, 73, 0.4);
+    }
+    #osStartMenu button.sm-item .sm-ico {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #0E1218;
+      border: 1px solid rgba(234, 227, 213, 0.2);
+      border-radius: 2px;
+      color: #D7AD49;
+      flex-shrink: 0;
+    }
+
+    /* ---- profile identity-card popover ---- */
+    .profile-pop {
+      position: absolute;
+      top: calc(100% + 10px);
+      left: 0;
+      min-width: 224px;
+      background: #171C23;
+      border: 1px solid rgba(234, 227, 213, 0.35);
+      border-radius: 3px;
+      box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.55);
+      display: none;
+      z-index: 45;
+    }
+    .profile-pop.pp-open { display: block; animation: smPop 0.16s ease; }
+    .pp-head {
+      font-family: 'DotGothic16', monospace;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      color: #D7AD49;
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(234, 227, 213, 0.15);
+    }
+    #profilePlate { transition: transform 0.15s ease; }
+    #profilePlate:hover { transform: translateY(-1px); }
+
+    /* ---- guestbook: physical notebook ---- */
+    #notebookOverlay .book-scroll {
+      background-image: repeating-linear-gradient(0deg, transparent 0 27px, rgba(68, 55, 46, 0.13) 27px 28px);
+    }
+    .note-sticky {
+      position: relative;
+      border-radius: 3px;
+      box-shadow: 2px 3px 0 rgba(68, 55, 46, 0.2);
+      animation: noteFade 0.35s ease backwards;
+      animation-delay: calc(var(--n, 0) * 60ms);
+    }
+    @keyframes noteFade {
+      from { opacity: 0; margin-top: 6px; }
+    }
+    .note-sticky .note-pin {
+      position: absolute;
+      top: -6px;
+      left: 12px;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #C0392B;
+      border: 1px solid #8F2B20;
+      box-shadow: 1px 1.5px 0 rgba(0, 0, 0, 0.35);
+    }
+    .note-sticky .note-pin.alt { background: #347E79; border-color: #24463F; }
+    #pinnedThoughtsList .note-sticky:nth-child(odd) { transform: rotate(-0.7deg); }
+    #pinnedThoughtsList .note-sticky:nth-child(even) { transform: rotate(0.6deg); }
+    #pinnedThoughtsList .note-sticky:hover { transform: rotate(0deg) translateY(-1px); }
+
+    /* =========================================================================
+       CRT WORKSTATION CONTAINER
+       ========================================================================= */
+    #monitorContainer {
+      position: absolute;
+      inset: 0;
+      z-index: 25;
+      pointer-events: none;
+      transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      opacity: 0;
+      transform: scale(0.94);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(4, 6, 10, 0.82);
+      backdrop-filter: blur(8px);
+      padding: 10px;
+    }
+    #monitorContainer.active-workstation {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1);
+    }
+
+    .crt-bezel {
+      width: 100%;
+      max-width: 1140px;
+      height: 94vh;
+      max-height: 800px;
+      background: #2b2e35;
+      border: 12px solid #1c1e24;
+      border-radius: 24px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.95), inset 0 0 16px rgba(0, 0, 0, 0.8);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    @media (max-width: 640px) {
+      .crt-bezel {
+        height: 98vh;
+        border-width: 6px;
+        border-radius: 14px;
+      }
+    }
+
+    .crt-screen {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #008080;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .crt-scanlines {
+      display: block;
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.22) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 255, 0, 0.03));
+      z-index: 100;
+      background-size: 100% 3px, 6px 100%;
+      pointer-events: none;
+      opacity: 0.55;
+    }
+    .crt-glare {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 35%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 100%);
+      pointer-events: none;
+      z-index: 101;
+    }
+
+    /* Retro Windows 95/98 UI */
+    .retro-window {
+      position: absolute;
+      background: #c0c0c0;
+      border-top: 2px solid #ffffff;
+      border-left: 2px solid #ffffff;
+      border-right: 2px solid #000000;
+      border-bottom: 2px solid #000000;
+      box-shadow: 4px 4px 16px rgba(0,0,0,0.55);
+      color: #000000;
+      display: flex;
+      flex-direction: column;
+      min-width: 280px;
+      font-size: 13px;
+      z-index: 10;
+    }
+    @media (max-width: 640px) {
+      .retro-window {
+        position: fixed !important;
+        top: 48px !important;
+        left: 8px !important;
+        right: 8px !important;
+        width: auto !important;
+        max-height: calc(100% - 95px) !important;
+      }
+    }
+
+    .retro-titlebar {
+      background: linear-gradient(90deg, #000080, #1084d0);
+      color: #ffffff;
+      padding: 5px 8px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: grab;
+      touch-action: none;
+    }
+    .retro-titlebar:active { cursor: grabbing; }
+
+    .retro-btn {
+      width: 20px;
+      height: 18px;
+      background: #c0c0c0;
+      border-top: 1.5px solid #ffffff;
+      border-left: 1.5px solid #ffffff;
+      border-right: 1.5px solid #000000;
+      border-bottom: 1.5px solid #000000;
+      font-size: 11px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #000000;
+      cursor: pointer;
+    }
+
+    .retro-inward-box {
+      border-top: 2px solid #808080;
+      border-left: 2px solid #808080;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      background: #ffffff;
+    }
+
+    .retro-taskbar {
+      height: 38px;
+      background: #c0c0c0;
+      border-top: 2px solid #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 4px;
+      z-index: 110;
+    }
+    .start-btn {
+      height: 30px;
+      padding: 0 10px;
+      background: #c0c0c0;
+      border-top: 2px solid #ffffff;
+      border-left: 2px solid #ffffff;
+      border-right: 2px solid #000000;
+      border-bottom: 2px solid #000000;
+      font-weight: 800;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: #000;
+      cursor: pointer;
+    }
+
+    .desktop-icon {
+      width: 78px;
+      padding: 6px 3px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      cursor: pointer;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.9);
+      border-radius: 4px;
+    }
+    .desktop-icon:active, .desktop-icon:hover {
+      background: rgba(0, 0, 128, 0.65);
+    }
+
+    /* Start Menu */
+    #crtStartMenu {
+      position: absolute;
+      bottom: 40px;
+      left: 4px;
+      width: 230px;
+      background: #c0c0c0;
+      border-top: 2px solid #ffffff;
+      border-left: 2px solid #ffffff;
+      border-right: 2px solid #000000;
+      border-bottom: 2px solid #000000;
+      box-shadow: 4px 4px 18px rgba(0,0,0,0.6);
+      display: flex;
+      z-index: 150;
+    }
+    .start-sidebar {
+      width: 30px;
+      background: linear-gradient(180deg, #000080, #1084d0);
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 15px;
+      letter-spacing: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 10px 0;
+    }
+    .start-item {
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #000000;
+      cursor: pointer;
+    }
+    .start-item:hover {
+      background: #000080;
+      color: #ffffff;
+    }
+
+    /* Spiral Notebook Modal */
+    #notebookOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      background: rgba(8, 12, 18, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    #notebookOverlay.open-notebook {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .notebook-book {
+      width: 100%;
+      max-width: 680px;
+      min-height: 0;
+      max-height: 86vh;
+      background: #EAE3D5;
+      border-radius: 8px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.85), inset 0 0 40px rgba(180, 160, 120, 0.15);
+      border-left: 24px solid #315A4A;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .spiral-binding {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: -22px;
+      width: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      pointer-events: none;
+    }
+    .spiral-ring {
+      width: 22px;
+      height: 8px;
+      background: linear-gradient(180deg, #EAE3D5 0%, #A8ADB4 50%, #44372E 100%);
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+
+    .retro-scroll::-webkit-scrollbar { width: 12px; background: #dfdfdf; }
+    .retro-scroll::-webkit-scrollbar-thumb {
+      background: #c0c0c0;
+      border-top: 1.5px solid #fff;
+      border-left: 1.5px solid #fff;
+      border-right: 1.5px solid #000;
+      border-bottom: 1.5px solid #000;
+    }
+    .book-scroll::-webkit-scrollbar { width: 6px; }
+    .book-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  </style>
+</head>
+<body class="relative w-full h-full">
+
+  <!-- 3D WebGL Canvas -->
+  <div id="canvas-container"></div>
+  <div class="room-vignette"></div>
+
+  <!-- =========================================================================
+       LUXURY, CUTE & TRENDY TOP BARS (DYNAMIC ISLAND STYLE)
+       ========================================================================= -->
+  <header id="roomHeader" class="absolute top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none transition-opacity duration-300">
+    
+    <!-- Top Left: Identity Nameplate (flat ivory plate, pixel avatar, hanko stamp) -->
+    <div class="relative pointer-events-auto">
+      <div id="profilePlate" class="paper-card px-2.5 sm:px-3.5 gap-2 sm:gap-3 py-2.5 flex items-center !rounded-[14px] cursor-pointer" onclick="toggleProfileCard(event)" title="Open identity card">
+      <!-- custom pixel-art avatar -->
+      <div class="w-10 h-10 flex-shrink-0 bg-[#D7AD49] border-[1.5px] border-[#44372E] rounded-[3px] flex items-center justify-center">
+        <svg width="26" height="26" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <!-- hair -->
+          <rect x="4" y="2" width="8" height="3" fill="#44372E"/>
+          <rect x="3" y="3" width="1" height="4" fill="#44372E"/>
+          <rect x="12" y="3" width="1" height="4" fill="#44372E"/>
+          <!-- face -->
+          <rect x="4" y="5" width="8" height="5" fill="#EAE3D5"/>
+          <!-- headphones -->
+          <rect x="2" y="6" width="2" height="3" fill="#44372E"/>
+          <rect x="12" y="6" width="2" height="3" fill="#44372E"/>
+          <rect x="2" y="9" width="2" height="1" fill="#D7AD49"/>
+          <rect x="12" y="9" width="2" height="1" fill="#D7AD49"/>
+          <!-- eyes -->
+          <rect x="6" y="7" width="1" height="1" fill="#44372E"/>
+          <rect x="9" y="7" width="1" height="1" fill="#44372E"/>
+          <!-- mouth -->
+          <rect x="7" y="9" width="2" height="1" fill="#44372E"/>
+          <!-- shirt -->
+          <rect x="4" y="10" width="8" height="4" fill="#347E79"/>
+          <rect x="7" y="10" width="2" height="4" fill="#EAE3D5"/>
+        </svg>
+      </div>
+      <div class="flex flex-col text-left leading-tight min-w-0">
+        <span class="font-retro text-[13px] text-[#44372E] tracking-wide whitespace-nowrap">Alvir Shahriar</span>
+        <span class="hidden sm:block text-[9.5px] text-[#44372E]/60 mt-1 tracking-wide whitespace-nowrap">CS UNDERGRAD · AI &amp; WEB</span>
+      </div>
+      <!-- hanko stamp -->
+      <div class="ml-auto w-7 h-7 rounded-[2px] bg-[#c0392b] border border-[#8f2b20] flex items-center justify-center flex-shrink-0">
+        <span class="font-retro text-[10px] text-[#EAE3D5] leading-none">阿</span>
+      </div>
+      </div>
+
+      <!-- Identity card popover -->
+      <div id="profileCard" class="profile-pop">
+        <div class="pp-head">ALVIROS ▪ IDENTITY CARD</div>
+        <div class="px-3 py-2.5">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-[2px] bg-[#D7AD49] border-[1.5px] border-[#44372E] flex items-center justify-center flex-shrink-0">
+              <span class="font-retro text-[10px] text-[#10151D] leading-none">阿</span>
+            </div>
+            <div>
+              <div class="font-retro text-[11px] text-[#EAE3D5] leading-none tracking-wide">Alvir Shahriar</div>
+              <div class="font-mono text-[8.5px] text-[#EAE3D5]/60 mt-1 tracking-wide">CSE UNDERGRADUATE</div>
+            </div>
+            <span class="ml-auto status-dot text-emerald-400" title="online"></span>
+          </div>
+          <div class="pt-2 mt-2 border-t border-[#EAE3D5]/15 font-mono text-[8.5px] text-[#EAE3D5]/60 leading-relaxed">
+            AI &amp; WEB DEVELOPMENT<br>IIUC · RESEARCH INTERN @ FOUNDRY LAB
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Right: Retro Walkman Player -->
+    <button id="btnAudioToggle" class="pointer-events-auto charcoal-card px-2.5 sm:px-3 gap-2 sm:gap-3 py-2.5 flex items-center !rounded-[14px] group cursor-pointer" title="Click to mute / resume ambient music">
+      <!-- album art: pixel cassette -->
+      <div class="w-9 h-9 rounded-[3px] bg-[#D7AD49] border-[1.5px] border-[#10151D] flex items-center justify-center flex-shrink-0 overflow-hidden">
+        <svg width="30" height="30" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
+          <rect x="1" y="2" width="14" height="12" fill="#171C23"/>
+          <rect x="1" y="2" width="14" height="1" fill="#EAE3D5" opacity="0.35"/>
+          <rect x="2.5" y="4" width="11" height="4" fill="#EAE3D5"/>
+          <circle cx="5.5" cy="6" r="1.2" fill="#171C23"/>
+          <circle cx="10.5" cy="6" r="1.2" fill="#171C23"/>
+          <rect x="4" y="9" width="8" height="3.5" fill="#0E1218"/>
+          <circle cx="6" cy="10.8" r="0.8" fill="#D7AD49" class="tape-reel"/>
+          <circle cx="10" cy="10.8" r="0.8" fill="#D7AD49" class="tape-reel"/>
+        </svg>
+      </div>
+      <!-- tape screen + progress -->
+      <div class="flex flex-col text-left leading-tight min-w-0">
+        <span id="audioStatusText" class="font-retro text-[11px] text-[#EAE3D5] tracking-wide whitespace-nowrap">Cozy Lo-Fi</span>
+        <div class="tex-scan mt-1.5 h-2.5 w-28 max-w-[26vw] rounded-[2px] bg-[#0E1218] border border-[#D7AD49]/30 relative overflow-hidden hidden sm:block">
+          <div class="tape-progress absolute inset-y-0 left-0 bg-[#D7AD49]/70"></div>
+          <span class="absolute inset-y-0 left-1 flex items-center font-retro text-[6.5px] text-[#D7AD49]/80 tracking-widest pointer-events-none">SIDE A</span>
+        </div>
+        <span class="hidden sm:inline text-[8px] text-[#EAE3D5]/40 font-mono mt-1 tracking-wider">NOW PLAYING<span class="cursor-blink" style="height:7px;width:4px;background:#D7AD49;"></span></span>
+      </div>
+      <!-- transport buttons -->
+      <div class="flex items-center gap-1 flex-shrink-0">
+        <span class="lw-ico text-[#EAE3D5]/40 hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M11 3v10L5 8l6-5Z" fill="currentColor"/><rect x="3" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
+        <span id="audioIcon" class="lw-ico text-[#EAE3D5]/90"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></span>
+        <span class="lw-ico text-[#EAE3D5]/40 hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M5 3v10l6-5-6-5Z" fill="currentColor"/><rect x="11.4" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
+        <span class="status-dot text-emerald-400"></span>
+      </div>
+    </button>
+  </header>
+
+  <!-- Tiny pixel stars — ambient decorations -->
+  <svg class="twinkle hidden md:block fixed left-[22%] top-[20%] z-[6] pointer-events-none" width="10" height="10" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><path d="M5 0v10M0 5h10M3 3l4 4M7 3 3 7" stroke="#D7AD49" stroke-width="1"/></svg>
+  <svg class="twinkle tw2 hidden md:block fixed right-[19%] top-[28%] z-[6] pointer-events-none" width="8" height="8" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><path d="M5 0v10M0 5h10" stroke="#347E79" stroke-width="1"/></svg>
+
+  <style>
+    .tape-progress { width: 0%; animation: tapeProgress 200s linear infinite; }
+    @keyframes tapeProgress { 0% { width: 4%; } 100% { width: 96%; } }
+    .tape-reel { transform-origin: center; animation: reelSpin 4s linear infinite; }
+    @keyframes reelSpin { to { transform: rotate(360deg); } }
+    .notebook-lines {
+      background-image: repeating-linear-gradient(0deg, transparent 0 9px, rgba(43, 36, 25, 0.12) 9px 10px);
+    }
+  </style>
+
+  <!-- =========================================================================
+       CLASSY, CUTE & TRENDY 3D ROOM BEACONS
+       ========================================================================= -->
+  <!-- 1. Guestbook Beacon — sticky note with pin & folded corner -->
+  <div id="notebookPill" class="beacon-pod bob-slow group absolute left-[4%] sm:left-[12%] top-[34%] sm:top-[38%] z-10 pointer-events-auto cursor-pointer" onclick="openNotebook()">
+    <div class="paper-card notebook-lines px-4 pt-3 pb-3 pr-5 flex items-center gap-3 !rotate-[-1.2deg]">
+      <!-- pin -->
+      <span class="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-[#c0392b] border border-[#8f2b20] shadow-[1px_1px_0_rgba(0,0,0,0.4)]"></span>
+      <!-- charcoal pen tile -->
+      <div class="w-9 h-9 rounded-[3px] bg-[#171C23] border border-[#44372E] flex items-center justify-center flex-shrink-0 text-[#D7AD49] transition-transform duration-300 group-hover:scale-105">
+        <span class="lw-ico"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
+      </div>
+      <div class="flex flex-col text-left leading-tight">
+        <span class="text-[8.5px] font-mono font-semibold tracking-[0.22em] text-[#b45309]">GUESTBOOK</span>
+        <span class="font-retro text-[14px] text-[#44372E] mt-1 leading-none">leave a thought</span>
+        <span class="font-retro text-[10px] text-[#44372E]/45 mt-1.5 italic">"great 3D desk!" — visitor</span>
+      </div>
+      <!-- folded corner -->
+      <span class="absolute bottom-0 right-0 w-3.5 h-3.5" style="background:linear-gradient(45deg, #EAE3D5 50%, #d8cfba 50%); border-left:1.5px solid #44372E; border-top:1.5px solid #44372E;"></span>
+    </div>
+    <!-- Stem & Floor Beacon Ring -->
+    <div class="flex flex-col items-center mt-1 pointer-events-none">
+      <div class="w-px h-5 bg-[#D7AD49]/50"></div>
+      <div class="w-1.5 h-1.5 bg-[#D7AD49] rotate-45 ring-4 ring-[#D7AD49]/10 animate-ping"></div>
+    </div>
+  </div>
+
+  <!-- 2. Workstation Beacon — CRT boot plate -->
+  <div id="clickPrompt" class="beacon-pod bob-delayed group absolute left-[50%] -translate-x-1/2 top-[44%] sm:top-[46%] z-10 pointer-events-auto cursor-pointer" onclick="enterWorkstation()">
+    <div class="charcoal-card px-4 py-3 rounded-[14px]">
+      <div class="tex-scan rounded-[10px] border border-[#347E79]/25 bg-[#0E1218] px-3 py-2">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-[1px] bg-[#347E79] flex-shrink-0"></span>
+          <span class="font-retro text-[11px] text-[#347E79] tracking-wider">ALVIROS v5.2 — READY<span class="cursor-blink" style="height:10px;width:6px;background:#347E79;"></span></span>
+        </div>
+        <div class="font-mono text-[8.5px] text-[#EAE3D5]/45 mt-1.5 tracking-wider">MEMORY OK · AUDIO OK · DESK OK</div>
+      </div>
+      <div class="flex items-center justify-between mt-2">
+        <span class="font-retro text-[13px] text-[#EAE3D5] tracking-wide">Pull up a chair</span>
+        <span class="px-2.5 py-1 rounded-full bg-[#D7AD49] border border-[#A87F2A] text-[#10151D] font-retro text-[10px] transition-colors duration-200 group-hover:bg-[#EAE3D5]">PRESS START</span>
+      </div>
+    </div>
+    <!-- Stem & Floor Beacon Ring -->
+    <div class="flex flex-col items-center mt-1 pointer-events-none">
+      <div class="w-px h-5 bg-[#347E79]/50"></div>
+      <div class="w-1.5 h-1.5 bg-[#347E79] rotate-45 ring-4 ring-[#347E79]/10 animate-ping"></div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       FREUD V3 AI MOBILE NAVIGATION BAR COMPONENT
+       ========================================================================= -->
+  <footer id="roomFooter" class="fixed bottom-4 sm:bottom-6 left-0 right-0 z-30 flex flex-col items-center justify-center pointer-events-none transition-opacity duration-300 px-3">
+    
+    <div class="pointer-events-auto freud-bar">
+
+      <!-- Start Button -->
+      <button onclick="toggleOsMenu(event)" id="btnOsStart" class="freud-tab os-start-btn group" data-tip="START" title="AlvirOS Start menu" style="--tint:#D7AD49;">
+        <span class="tab-ico"><svg width="15" height="15" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="2" width="5.4" height="5.4" fill="#D7AD49"/><rect x="8.6" y="2" width="5.4" height="5.4" fill="#EAE3D5"/><rect x="2" y="8.6" width="5.4" height="5.4" fill="#EAE3D5"/><rect x="8.6" y="8.6" width="5.4" height="5.4" fill="#D7AD49"/></svg></span>
+        <span class="tab-text">Start</span>
+      </button>
+
+      <!-- Start Menu popover -->
+      <div id="osStartMenu">
+        <div class="sm-head">ALVIROS ▪ START</div>
+        <button class="sm-item" onclick="closeOsMenu(); enterWorkstation();">
+          <span class="sm-ico"><svg width="13" height="13" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="3" y="4" width="10" height="8" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="6" width="6" height="4" fill="currentColor" opacity="0.5"/><path d="M6 14h4M8 12v2" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></span>
+          <span>Boot Workstation</span>
+        </button>
+        <button class="sm-item" onclick="closeOsMenu(); openProjectsDrawer();">
+          <span class="sm-ico"><svg width="13" height="13" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M1 4h4l1.5 2H15v7a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4Z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 4V2h5l1 2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></span>
+          <span>My Projects</span>
+        </button>
+        <button class="sm-item" onclick="closeOsMenu(); openNotebook();">
+          <span class="sm-ico"><svg width="13" height="13" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="3" y="2" width="10" height="12" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 5h3M8 8h3M8 11h3" stroke="currentColor" stroke-width="1.2"/></svg></span>
+          <span>Guestbook</span>
+        </button>
+        <button class="sm-item" onclick="closeOsMenu(); openContactModal();">
+          <span class="sm-ico"><svg width="13" height="13" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="1.5" y="3.5" width="13" height="9" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="m2 4 6 5 6-5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></span>
+          <span>Contact Me</span>
+        </button>
+      </div>
+
+      <!-- Tab 1: AlvirOS Workstation — CRT with antennas -->
+      <button onclick="enterWorkstation()" class="freud-tab primary-tab group" data-tip="BOOT ALVIROS" title="Pull up a chair & enter retro AlvirOS" style="--tint:#347E79;">
+        <span class="tab-ico"><svg width="17" height="17" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M4 4 2 1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M12 4 14 1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="3" y="4" width="10" height="8" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="6" width="6" height="4" fill="currentColor" opacity="0.5"/><path d="M6 14h4M8 12v2" stroke="currentColor" stroke-width="1.4" fill="none"/></svg></span>
+        <span class="tab-text">AlvirOS</span>
+      </button>
+
+      <!-- Tab 2: GitHub Projects Drawer — tabbed folder -->
+      <button onclick="openProjectsDrawer()" class="freud-tab group" data-tip="MY PROJECTS" title="Explore all of Alvir's GitHub Projects" style="--tint:#EAE3D5;">
+        <span class="tab-ico"><svg width="17" height="17" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M1 4h4l1.5 2H15v7a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4Z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 4V2h5l1 2" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="6" y="9" width="4" height="1.5" fill="currentColor"/></svg></span>
+        <span class="tab-text">Projects</span>
+        <span class="tab-count">11</span>
+      </button>
+
+      <!-- Tab 3: Desk Guestbook — spiral notebook -->
+      <button onclick="openNotebook()" class="freud-tab group" data-tip="GUESTBOOK" title="Leave a note in the desk spiral notebook" style="--tint:#D7AD49;">
+        <span class="tab-ico"><svg width="17" height="17" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="3" y="2" width="10" height="12" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="5" cy="4" r="0.9" fill="currentColor"/><circle cx="5" cy="8" r="0.9" fill="currentColor"/><circle cx="5" cy="12" r="0.9" fill="currentColor"/><path d="M8 5h3M8 8h3M8 11h3" stroke="currentColor" stroke-width="1.2"/></svg></span>
+        <span class="tab-text">Guestbook</span>
+      </button>
+
+      <!-- Tab 4: Contact Modal — envelope with stamp -->
+      <button onclick="openContactModal()" class="freud-tab group" data-tip="CONTACT ME" title="Send a message or connect" style="--tint:#c0392b;">
+        <span class="tab-ico"><svg width="17" height="17" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="1.5" y="3.5" width="13" height="9" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="m2 4 6 5 6-5" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="9" width="2.5" height="2.5" fill="currentColor"/></svg></span>
+        <span class="tab-text">Contact</span>
+      </button>
+
+    </div>
+    
+    <div class="mt-2.5 pointer-events-none">
+      <div class="charcoal-card inline-flex items-center gap-2 px-3 py-1.5 !rounded-full">
+        <span class="status-dot text-emerald-400" style="width:5px;height:5px;"></span>
+        <span class="text-[9.5px] text-[#EAE3D5]/70 font-mono tracking-wide">tap the CRT or notebook — or use the dock<span class="cursor-blink" style="height:8px;width:5px;"></span></span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- =========================================================================
+       FREUD V3 STYLE SLIDE-UP GITHUB PROJECTS DRAWER
+       ========================================================================= -->
+  <div id="projectsDrawer" onclick="handleDrawerBackdropClick(event)">
+    <div class="drawer-card" onclick="event.stopPropagation()">
+      
+      <!-- Drawer Top Bar / Header -->
+      <div class="p-4 sm:p-5 border-b border-[#EAE3D5]/12 flex items-center justify-between bg-[#10151D]">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-[3px] bg-[#D7AD49] border-[1.5px] border-[#44372E] flex items-center justify-center text-[#10151D] flex-shrink-0">
+            <span class="lw-ico"><svg viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></span>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="font-retro text-base sm:text-lg text-[#EAE3D5] tracking-wide">Alvir's GitHub Projects</h2>
+              <span class="px-2 py-0.5 rounded-[2px] text-[9px] font-mono font-semibold tracking-widest bg-[#EAE3D5] text-[#10151D] border border-[#c9bfa6]">11 REPOS</span>
+            </div>
+            <p class="text-[10px] text-[#EAE3D5]/45 mt-1 tracking-wide">Click any program to run it — each opens its own window</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <a href="https://github.com/Alvirwebd" target="_blank" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-[3px] bg-transparent border border-[#EAE3D5]/30 hover:border-[#D7AD49] hover:text-[#D7AD49] text-[#EAE3D5] text-[10px] font-mono tracking-widest transition">
+            <span>PROFILE ↗</span>
+          </a>
+          <button onclick="closeProjectsDrawer()" class="w-8 h-8 rounded-[3px] bg-transparent border border-[#EAE3D5]/25 hover:border-[#c0392b] hover:text-[#c0392b] text-[#EAE3D5]/70 flex items-center justify-center text-xs transition">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Explorer Toolbar -->
+      <div class="px-4 py-2.5 border-b border-[#EAE3D5]/12 flex items-center gap-3 overflow-x-auto bg-[#10151D]">
+        <span class="hidden sm:flex items-center gap-1.5 flex-shrink-0 text-[#EAE3D5]/50 font-retro text-[10px] tracking-wider pr-2 border-r border-[#EAE3D5]/15">
+          <svg width="13" height="13" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M1 4h4l1.5 2H15v7a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4Z" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 4V2h5l1 2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+          C:\ALVIR\PROJECTS
+        </span>
+        <button onclick="filterDrawerProjects('all')" class="proj-filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-[#D7AD49] text-[#10151D] font-retro text-[10px] tracking-wider border border-[#A87F2A] transition flex-shrink-0">
+          <svg width="11" height="11" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="2" width="5" height="5" fill="currentColor"/><rect x="9" y="2" width="5" height="5" fill="currentColor"/><rect x="2" y="9" width="5" height="5" fill="currentColor"/><rect x="9" y="9" width="5" height="5" fill="currentColor"/></svg>
+          All Projects
+        </button>
+        <button onclick="filterDrawerProjects('fullstack')" class="proj-filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-transparent border border-[#EAE3D5]/20 text-[#EAE3D5]/60 font-retro text-[10px] tracking-wider transition flex-shrink-0">
+          <svg width="11" height="11" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="2" width="12" height="4" fill="currentColor" opacity="0.6"/><rect x="2" y="8" width="12" height="2" fill="currentColor"/><rect x="2" y="12" width="8" height="2" fill="currentColor" opacity="0.6"/></svg>
+          Full-Stack &amp; AI
+        </button>
+        <button onclick="filterDrawerProjects('3d')" class="proj-filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-transparent border border-[#EAE3D5]/20 text-[#EAE3D5]/60 font-retro text-[10px] tracking-wider transition flex-shrink-0">
+          <svg width="11" height="11" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="2" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="5" width="6" height="6" fill="currentColor" opacity="0.6"/></svg>
+          3D &amp; WebRTC
+        </button>
+        <button onclick="filterDrawerProjects('systems')" class="proj-filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-transparent border border-[#EAE3D5]/20 text-[#EAE3D5]/60 font-retro text-[10px] tracking-wider transition flex-shrink-0">
+          <svg width="11" height="11" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="6" y="2" width="4" height="4" fill="currentColor"/><rect x="2" y="10" width="4" height="4" fill="currentColor"/><rect x="10" y="10" width="4" height="4" fill="currentColor"/><path d="M8 6v4M4 10l4-2M12 10l-4-2" stroke="currentColor" stroke-width="1.2"/></svg>
+          Systems &amp; C++
+        </button>
+      </div>
+
+      <!-- Projects Explorer Grid (Scrollable) -->
+      <div class="p-4 sm:p-5 overflow-y-auto max-h-[60vh] grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5 book-scroll">
+        
+        <!-- 1. EduLearn -->
+        <div class="project-grid-card proj-tile group" data-category="fullstack" style="--tint:#D7AD49; --i:0"
+             data-title="EduLearn — AI Learning Platform" data-cat-label="FULL-STACK &amp; AI" data-year="2024" data-status="live" data-repo="EduLearn"
+             data-demo="https://edu-learn-dpjj.vercel.app/"
+             data-desc="E-learning platform featuring dynamic AI tutoring, interactive quizzes, career roadmaps, real-time collaboration with Socket.io, SSLCommerz payments, and automated certification."
+             data-tech="React 18,Node.js,MongoDB,Socket.io,OpenRouter AI"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>EduLearn.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/EduLearn" alt="EduLearn preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">MERN &amp; OPENROUTER AI ECOSYSTEM</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led live"><i></i>LIVE</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2024 · 5 MODULES</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 3D Hand Cricket -->
+        <div class="project-grid-card proj-tile group" data-category="3d" style="--tint:#347E79; --i:1" data-dark="1"
+             data-title="3D Hand Cricket — Multiplayer" data-cat-label="3D &amp; WEBRTC" data-year="2025" data-status="live" data-repo="hand-cricket"
+             data-desc="Authentic school nostalgia 3D hand cricket game with 2-player real-time online multiplayer, 3D animated hands, physics effects, audio cues, and seamless WebRTC peer connectivity."
+             data-tech="Three.js (WebGL),WebRTC,HTML5 Canvas"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>HandCricket3D.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/hand-cricket" alt="3D Hand Cricket preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">WEBGL GAME · P2P MULTIPLAYER</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led live"><i></i>LIVE</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2025 · 2P ONLINE</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Signaling Server -->
+        <div class="project-grid-card proj-tile group" data-category="3d" style="--tint:#347E79; --i:2" data-dark="1"
+             data-title="Hand Cricket Signal Server" data-cat-label="3D &amp; WEBRTC" data-year="2025" data-status="live" data-repo="hand-cricket-signal"
+             data-desc="Low-latency signaling backend engineered with WebSocket and Node.js for SDP handshakes, ICE candidate exchange, and room coordination."
+             data-tech="Node.js,WebSocket,P2P Signaling"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>SignalSrv.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/hand-cricket-signal" alt="Signal server preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">PEER DISCOVERY · ROOM MATCHMAKING</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led live"><i></i>STABLE</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2025 · BACKEND</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. NextGenNerds -->
+        <div class="project-grid-card proj-tile group" data-category="fullstack" style="--tint:#D7AD49; --i:3"
+             data-title="NextGenNerds — CS Learning Hub" data-cat-label="FULL-STACK &amp; AI" data-year="2024" data-status="live" data-repo="SD-Project"
+             data-demo="https://nextgennerds.netlify.app/"
+             data-desc="Interactive CS community platform designed with smooth GSAP animations, Tailwind CSS responsive layouts, tutorial libraries, and developer resources."
+             data-tech="React,GSAP,Tailwind CSS,Netlify CI/CD"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>NextGenNerds.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/SD-Project" alt="NextGenNerds preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">COMMUNITY HUB · GSAP MOTION</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led live"><i></i>LIVE</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2024 · COMMUNITY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. MultiCorp -->
+        <div class="project-grid-card proj-tile group" data-category="systems" style="--tint:#315A4A; --i:4" data-dark="1"
+             data-title="MultiCorp Management System" data-cat-label="SYSTEMS &amp; C++" data-year="2023" data-status="archived" data-repo="MultiCorp-Management-System"
+             data-desc="Relational database management platform modeling complex organizational hierarchies, departmental budgeting, employee tracking, and audited SQL transaction handling."
+             data-tech="SQL,Relational DBMS,ERP Architecture"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>MultiCorp.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/MultiCorp-Management-System" alt="MultiCorp preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">RELATIONAL DBMS · CORPORATE ERP</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led archived"><i></i>ARCHIVED</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2023 · SEMESTER 2</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Study & Skill -->
+        <div class="project-grid-card proj-tile group" data-category="systems" style="--tint:#315A4A; --i:5" data-dark="1"
+             data-title="Study &amp; Skill Management System" data-cat-label="SYSTEMS &amp; C++" data-year="2023" data-status="archived" data-repo="Study-And-Skill-Management-System."
+             data-desc="System engineered with normalization compliance, GPA trajectory forecasting, subject milestone tracking, and student workload analytics."
+             data-tech="Python,MySQL,DBMS"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>StudySkill.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/Study-And-Skill-Management-System." alt="Study & Skill preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">GPA FORECASTING · ANALYTICS</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led archived"><i></i>ARCHIVED</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2023 · ACADEMIC</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. Quick Doctor -->
+        <div class="project-grid-card proj-tile group" data-category="systems" style="--tint:#315A4A; --i:6" data-dark="1"
+             data-title="Quick Doctor Solution" data-cat-label="SYSTEMS &amp; C++" data-year="2023" data-status="archived" data-repo="Quick-Doctor-Solution"
+             data-desc="Structured C systems project for hospital appointment booking, doctor rosters, patient records persistence, and memory-efficient file I/O operations."
+             data-tech="C Language,File Systems,Data Structures"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>QuickDoctor.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/Quick-Doctor-Solution" alt="Quick Doctor preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">C CLINICAL SYSTEM · FILE I/O</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led archived"><i></i>ARCHIVED</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2023 · CLINIC</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. DSA -->
+        <div class="project-grid-card proj-tile group" data-category="systems" style="--tint:#315A4A; --i:7" data-dark="1"
+             data-title="Data Structures &amp; Algorithms" data-cat-label="SYSTEMS &amp; C++" data-year="2024" data-status="ongoing" data-repo="DATA-STRUCTURE"
+             data-desc="Handcrafted implementations of fundamental data structures: Binary Search Trees, Graphs, Hash Maps, Linked Lists, Heaps, and sorting algorithms in C++."
+             data-tech="C++,Algorithms,Memory Management"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>DataStruct.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/DATA-STRUCTURE" alt="DSA preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">C++ · TREES GRAPHS HEAPS</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led ongoing"><i></i>ONGOING</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2024 · C++</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 9. Practice 800 -->
+        <div class="project-grid-card proj-tile group" data-category="systems" style="--tint:#315A4A; --i:8" data-dark="1"
+             data-title="Practice 800 Rating Drills" data-cat-label="SYSTEMS &amp; C++" data-year="2025" data-status="ongoing" data-repo="Practice800rating"
+             data-desc="Curated solutions and algorithmic problem drills solving Div. 2/3 contest problems on Codeforces and online judges."
+             data-tech="C++,Competitive Programming"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>Practice800.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/Practice800rating" alt="Practice 800 preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">CODEFORCES DIV 2/3 DRILLS</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led ongoing"><i></i>ONGOING</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2025 · RATING</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 10. DOM Clock -->
+        <div class="project-grid-card proj-tile group" data-category="3d" style="--tint:#347E79; --i:9" data-dark="1"
+             data-title="Interactive DOM Clock" data-cat-label="3D &amp; WEBRTC" data-year="2024" data-status="live" data-repo="DOM-Clock-"
+             data-desc="High precision digital and analog clock engine built with pure JavaScript, dynamic DOM node updates, and smooth CSS transforms."
+             data-tech="JavaScript,CSS3 Animations"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>DomClock.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/DOM-Clock-" alt="DOM Clock preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">PURE JS · CSS TRANSFORMS</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led live"><i></i>SHIPPED</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2024 · EXPERIMENT</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 11. Profile Repo -->
+        <div class="project-grid-card proj-tile group" data-category="fullstack" style="--tint:#D7AD49; --i:10"
+             data-title="Alvirwebd GitHub Profile" data-cat-label="FULL-STACK &amp; AI" data-year="2025" data-status="live" data-repo="Alvirwebd"
+             data-desc="Official GitHub profile repository configured with Tokyo Night statistics, developer streaks, language distributions, and automated metrics."
+             data-tech="Markdown,GitHub Actions"
+             onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
+          <div class="proj-tile-bar"><span>Profile.DAT</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/Alvirwebd" alt="Profile repo preview" loading="lazy" onerror="this.style.display='none'"></div>
+          <div class="px-3 py-2.5">
+            <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">LIVE STATS · AUTO METRICS</div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="status-led live"><i></i>LIVE</span>
+              <span class="font-mono text-[9px] text-[#EAE3D5]/40">2025 · PROFILE</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Jump Button -->
+      <div class="p-3.5 sm:p-4 border-t border-[#EAE3D5]/12 bg-[#10151D] flex items-center justify-between text-xs gap-3">
+        <span class="text-[#EAE3D5]/50 font-mono text-[10px] tracking-wide hidden sm:block">Want to collaborate? Open an issue.</span>
+        <a href="https://github.com/Alvirwebd?tab=repositories" target="_blank" class="pd-btn pd-btn-gh ml-auto flex-shrink-0">
+          <span>View All on GitHub</span> ↗
+        </a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       PROJECT DETAIL — CLASSIC APPLICATION WINDOW
+       ========================================================================= -->
+  <div id="projectDetail" onclick="handleDetailBackdropClick(event)">
+    <div class="pd-window" onclick="event.stopPropagation()">
+      <div class="pd-titlebar" id="pdTitlebar">
+        <span id="pdTitle">Project.EXE</span>
+        <span class="ml-auto flex items-center gap-1.5 font-mono text-[8px] tracking-[0.2em] opacity-70">— ▢ ✕</span>
+      </div>
+      <div class="pd-menubar"><span>File</span><span>Edit</span><span>View</span><span>Help</span></div>
+      <div class="pd-shot tex-scan">
+        <img id="pdShot" src="" alt="Project preview" onerror="this.style.display='none'">
+      </div>
+      <div class="p-5 space-y-4">
+        <div class="flex items-start justify-between gap-3">
+          <h3 id="pdName" class="font-retro text-[16px] text-[#EAE3D5] tracking-wide leading-snug"></h3>
+          <span id="pdStatus" class="status-led mt-1 flex-shrink-0"><i></i><span>LIVE</span></span>
+        </div>
+        <p id="pdDesc" class="text-[11.5px] text-[#EAE3D5]/75 leading-relaxed font-mono"></p>
+        <div class="pd-meta">
+          <div><div class="k">YEAR</div><div class="v" id="pdYear">—</div></div>
+          <div><div class="k">CATEGORY</div><div class="v" id="pdCat">—</div></div>
+          <div><div class="k">TECH COUNT</div><div class="v" id="pdCount">—</div></div>
+        </div>
+        <div>
+          <div class="font-retro text-[10px] text-[#EAE3D5]/50 tracking-[0.16em] mb-2">BUILT WITH</div>
+          <div id="pdTech" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div class="flex items-center gap-2 pt-1 flex-wrap">
+          <a id="pdGithub" href="#" target="_blank" class="pd-btn pd-btn-gh">
+            <svg width="13" height="13" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M8 1a7 7 0 0 0-2.2 13.6c.35.07.48-.15.48-.33v-1.16c-1.95.42-2.36-.94-2.36-.94-.32-.8-.78-1.02-.78-1.02-.63-.43.05-.42.05-.42.7.05 1.07.72 1.07.72.63 1.07 1.65.76 2.05.58.06-.45.25-.76.45-.94-1.55-.17-3.19-.77-3.19-3.45 0-.76.27-1.39.72-1.88-.07-.18-.31-.89.07-1.85 0 0 .59-.19 1.92.72a6.7 6.7 0 0 1 3.5 0c1.33-.9 1.92-.72 1.92-.72.38.96.14 1.67.07 1.85.45.49.72 1.12.72 1.88 0 2.69-1.64 3.28-3.2 3.45.25.22.48.64.48 1.3v1.93c0 .18.13.4.49.33A7 7 0 0 0 8 1Z" fill="currentColor"/></svg>
+            <span>Source Code</span>
+          </a>
+          <a id="pdDemo" href="#" target="_blank" class="pd-btn pd-btn-demo hidden">
+            <span>Live Demo ↗</span>
+          </a>
+          <button onclick="closeProjectDetail()" class="pd-btn pd-btn-back ml-auto">
+            <span>← Back to collection</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       CRT WORKSTATION (ALVIROS WINDOWS 98 DESKTOP)
+       ========================================================================= -->
+  <div id="monitorContainer">
+    <div class="crt-bezel">
+      
+      <div class="h-9 bg-[#1c1e24] px-3 flex items-center justify-between text-xs text-slate-400 border-b border-slate-700/60">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500"></span>
+          <span class="font-mono text-[11px] text-slate-300">ALVIROS v5.2 // 1024x768</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <button onclick="exitWorkstation(event)" class="px-2.5 py-1 bg-red-600 hover:bg-red-500 text-white font-bold rounded text-[11px] shadow transition flex items-center gap-1">
+            <span>🚪 Stand Up</span>
+            <span class="hidden sm:inline text-[9px] bg-red-700 px-1 rounded">[ESC]</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="crt-screen">
+        <div id="crtScanlineLayer" class="crt-scanlines"></div>
+        <div class="crt-glare"></div>
+
+        <!-- Desktop Icons -->
+        <div class="p-3 grid grid-cols-1 gap-1.5 w-24 select-none z-10 overflow-y-auto">
+          <div class="desktop-icon" onclick="openWindow('winProjects')">
+            <span class="text-3xl">📁</span>
+            <span class="mt-0.5">Projects</span>
+          </div>
+          <div class="desktop-icon" onclick="openWindow('winResearch')">
+            <span class="text-3xl">🔬</span>
+            <span class="mt-0.5">Research.pdf</span>
+          </div>
+          <div class="desktop-icon" onclick="openWindow('winEducation')">
+            <span class="text-3xl">🎓</span>
+            <span class="mt-0.5">Education.txt</span>
+          </div>
+          <div class="desktop-icon" onclick="openWindow('winTerminal')">
+            <span class="text-3xl">📟</span>
+            <span class="mt-0.5">Terminal</span>
+          </div>
+          <div class="desktop-icon" onclick="openNotebook()">
+            <span class="text-3xl">✍️</span>
+            <span class="mt-0.5">Thoughts</span>
+          </div>
+          <div class="desktop-icon" onclick="openWindow('winContact')">
+            <span class="text-3xl">💌</span>
+            <span class="mt-0.5">Contact</span>
+          </div>
+          <div class="desktop-icon" onclick="openWindow('winPlayer')">
+            <span class="text-3xl">🎵</span>
+            <span class="mt-0.5">AlvirAmp</span>
+          </div>
+          <div class="desktop-icon" onclick="openWindow('winMinesweeper')">
+            <span class="text-3xl">💣</span>
+            <span class="mt-0.5">Mines</span>
+          </div>
+        </div>
+
+        <!-- 1. PROJECTS EXPLORER WINDOW (UN-HIGHLIGHTED, CLEAN & DIGNIFIED) -->
+        <div id="winProjects" class="retro-window top-6 left-28 sm:left-32 w-[580px] max-w-[94vw]" style="display: none;">
+          <div class="retro-titlebar" onmousedown="startDrag(event, 'winProjects')">
+            <div class="flex items-center gap-1.5">
+              <span>📁</span> <span>C:\Alvir\Projects\</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="retro-btn" onclick="minimizeWindow('winProjects')">_</button>
+              <button class="retro-btn" onclick="closeWindow('winProjects')">✕</button>
+            </div>
+          </div>
+          <div class="p-3 bg-white retro-inward-box m-1 max-h-[500px] overflow-y-auto retro-scroll space-y-3.5">
+            
+            <!-- 1. EduLearn -->
+            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+              <div class="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">EduLearn — Intelligent Learning Ecosystem</h3>
+                  <div class="text-[11px] text-slate-500 font-medium">Full-Stack MERN + AI Study Partner</div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <a href="https://github.com/Alvirwebd/EduLearn" target="_blank" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
+                    <span>GitHub</span> <span>↗</span>
+                  </a>
+                  <a href="https://edu-learn-dpjj.vercel.app/" target="_blank" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
+                    <span>Live Demo</span> <span>↗</span>
+                  </a>
+                </div>
+              </div>
+              <p class="text-xs text-slate-700 mt-2 leading-relaxed">
+                Full-stack education ecosystem featuring real-time collaborative peer study rooms via Socket.io, OpenRouter AI question assistance, course catalogs, and SSLCommerz payment integration.
+              </p>
+              <div class="flex flex-wrap gap-1 mt-2.5">
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">React 18</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">Node.js</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">Socket.io</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">OpenRouter AI</span>
+              </div>
+            </div>
+
+            <!-- 2. 3D Hand Cricket -->
+            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+              <div class="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">3D Hand Cricket — Online Multiplayer</h3>
+                  <div class="text-[11px] text-slate-500 font-medium">Authentic School Nostalgia with WebRTC P2P</div>
+                </div>
+                <a href="https://github.com/Alvirwebd/hand-cricket" target="_blank" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
+                  <span>GitHub</span> <span>↗</span>
+                </a>
+              </div>
+              <p class="text-xs text-slate-700 mt-2 leading-relaxed">
+                School nostalgia 3D hand cricket game with 2-player real-time online multiplayer, 3D animated hands, physics effects, audio cues, and seamless WebRTC peer connectivity.
+              </p>
+              <div class="flex flex-wrap gap-1 mt-2.5">
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">Three.js</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">WebRTC</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">HTML5</span>
+              </div>
+            </div>
+
+            <!-- 3. NextGenNerds -->
+            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+              <div class="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">NextGenNerds — CS Learning Hub</h3>
+                  <div class="text-[11px] text-slate-500 font-medium">Community Platform & Animated Roadmaps</div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <a href="https://github.com/Alvirwebd/SD-Project" target="_blank" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
+                    <span>GitHub</span> <span>↗</span>
+                  </a>
+                  <a href="https://nextgennerds.netlify.app/" target="_blank" class="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
+                    <span>Live Site</span> <span>↗</span>
+                  </a>
+                </div>
+              </div>
+              <p class="text-xs text-slate-700 mt-2 leading-relaxed">
+                Interactive CS community platform engineered with high-performance GSAP micro-animations, Tailwind CSS layouts, and structured curriculum learning roadmaps.
+              </p>
+              <div class="flex flex-wrap gap-1 mt-2.5">
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">React</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">GSAP</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">Tailwind CSS</span>
+              </div>
+            </div>
+
+            <!-- 4. MultiCorp Management System -->
+            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+              <div class="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">MultiCorp Management System</h3>
+                  <div class="text-[11px] text-slate-500 font-medium">Relational DBMS & Corporate Resource ERP</div>
+                </div>
+                <a href="https://github.com/Alvirwebd/MultiCorp-Management-System" target="_blank" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
+                  <span>GitHub</span> <span>↗</span>
+                </a>
+              </div>
+              <p class="text-xs text-slate-700 mt-2 leading-relaxed">
+                2nd Semester enterprise resource management project modeling organizational hierarchies, departmental budgeting, and audited SQL transaction handling.
+              </p>
+              <div class="flex flex-wrap gap-1 mt-2.5">
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">SQL</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">Relational DBMS</span>
+              </div>
+            </div>
+
+            <!-- 5. Study & Skill Management System -->
+            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+              <div class="flex items-start justify-between flex-wrap gap-2">
+                <div>
+                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">Study & Skill Management System</h3>
+                  <div class="text-[11px] text-slate-500 font-medium">Academic Analytics & Progress Tracking</div>
+                </div>
+                <a href="https://github.com/Alvirwebd/Study-And-Skill-Management-System." target="_blank" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
+                  <span>GitHub</span> <span>↗</span>
+                </a>
+              </div>
+              <p class="text-xs text-slate-700 mt-2 leading-relaxed">
+                Academic progress tracking platform with relational database schemas, normalization compliance, automated GPA trajectory forecasting, and real-time student analytics.
+              </p>
+              <div class="flex flex-wrap gap-1 mt-2.5">
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">Python</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">MySQL</span>
+                <span class="bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-300 rounded">DBMS</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 2. FOUNDRY LAB RESEARCH PDF WINDOW -->
+        <div id="winResearch" class="retro-window top-10 left-20 sm:left-36 w-[560px] max-w-[94vw]" style="display: none;">
+          <div class="retro-titlebar" onmousedown="startDrag(event, 'winResearch')">
+            <div class="flex items-center gap-1.5">
+              <span>🔬</span> <span>Acrobat Reader — FoundryLab_Research.pdf</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="retro-btn" onclick="minimizeWindow('winResearch')">_</button>
+              <button class="retro-btn" onclick="closeWindow('winResearch')">✕</button>
+            </div>
+          </div>
+          <div class="p-4 bg-white retro-inward-box m-1 max-h-[480px] overflow-y-auto retro-scroll space-y-4 text-slate-800 font-serif">
+            <div class="border-b-2 border-slate-800 pb-3 text-center">
+              <span class="text-[10px] uppercase font-mono tracking-widest text-emerald-700 font-bold">Foundry Lab • Research Internship</span>
+              <h2 class="text-sm sm:text-base font-bold text-slate-900 mt-1 leading-snug">
+                Literature Review & Gap Analysis on LLM-based Automatic Educational Question Generation
+              </h2>
+              <div class="text-xs text-slate-600 mt-1 font-sans">
+                <strong>Alvir Shahriar</strong> • Research Intern, Foundry Lab
+              </div>
+            </div>
+            <div>
+              <h4 class="font-sans text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">Abstract & Core Focus</h4>
+              <p class="text-xs leading-relaxed text-slate-700">
+                A systematic literature review and empirical gap analysis evaluating the state-of-the-art capability of Large Language Models (LLMs) to automatically generate pedagogical assessment instruments. Investigating contextual depth, Bloom's Taxonomy cognitive alignment, hallucination mitigation, and psychometric validity.
+              </p>
+            </div>
+            <div class="p-3 bg-emerald-50 border border-emerald-300 rounded font-sans text-xs">
+              <strong class="text-emerald-950">Key Research Objectives:</strong>
+              <ul class="list-disc list-inside mt-1.5 space-y-1 text-emerald-900 text-[11px]">
+                <li>Benchmark prompt engineering techniques for multi-choice vs. open-ended conceptual evaluation.</li>
+                <li>Analyze domain adaptation strategies using parameter-efficient fine-tuning (PEFT/LoRA).</li>
+                <li>Develop automated rubric scoring systems to evaluate machine-generated assessment quality.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. EDUCATION TEXT WINDOW -->
+        <div id="winEducation" class="retro-window top-12 left-16 sm:left-40 w-[480px] max-w-[94vw]" style="display: none;">
+          <div class="retro-titlebar" onmousedown="startDrag(event, 'winEducation')">
+            <div class="flex items-center gap-1.5">
+              <span>🎓</span> <span>Notepad — IIUC_Education.txt</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="retro-btn" onclick="minimizeWindow('winEducation')">_</button>
+              <button class="retro-btn" onclick="closeWindow('winEducation')">✕</button>
+            </div>
+          </div>
+          <div class="p-3 bg-white retro-inward-box m-1 font-mono text-xs text-slate-800 leading-relaxed max-h-[420px] overflow-y-auto">
+============================================================<br>
+ACADEMIC HISTORY & HIGHER EDUCATION<br>
+============================================================<br><br>
+[INSTITUTION]<br>
+International Islamic University Chittagong (IIUC)<br>
+Department of Computer Science & Engineering<br><br>
+[DEGREE]<br>
+Bachelor of Science in Computer Science & Engineering (B.Sc CSE)<br>
+Duration: 2022 – Present (6th Semester)<br><br>
+[KEY COURSEWORK & FOUNDATIONS]<br>
+- Data Structures & Algorithms (DSA)<br>
+- Database Management Systems (DBMS)<br>
+- Object-Oriented Programming (OOP)<br>
+- Software Engineering & Design Patterns<br>
+- Operating Systems & System Programming<br>
+- Computer Networks & Protocols<br>
+- Artificial Intelligence & Machine Learning<br><br>
+[EXPERIENCE]<br>
+- Research Intern Appointment @ Foundry Lab (2024 - Present)<br>
+          </div>
+        </div>
+
+        <!-- 4. INTERACTIVE RETRO TERMINAL -->
+        <div id="winTerminal" class="retro-window top-14 left-10 sm:left-32 w-[580px] max-w-[94vw]" style="display: none;">
+          <div class="retro-titlebar" onmousedown="startDrag(event, 'winTerminal')">
+            <div class="flex items-center gap-1.5">
+              <span>📟</span> <span>MS-DOS Prompt — [alvir@workstation]</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="retro-btn" onclick="minimizeWindow('winTerminal')">_</button>
+              <button class="retro-btn" onclick="closeWindow('winTerminal')">✕</button>
+            </div>
+          </div>
+          <div id="terminalBody" class="p-3 bg-[#0c1017] text-emerald-400 font-mono text-xs max-h-[360px] overflow-y-auto retro-scroll" onclick="document.getElementById('termInput').focus()">
+            <div class="text-slate-400 mb-2">
+              Microsoft(R) Windows 98 [Version 4.10.1998]<br>
+              Alvir Shahriar CLI. Type <span class="text-yellow-400 font-bold">'help'</span> for command list.
+            </div>
+            <div id="termHistory"></div>
+            <div class="flex items-center gap-1.5 mt-1">
+              <span class="text-emerald-400">alvir@workstation:~$</span>
+              <input id="termInput" type="text" class="bg-transparent outline-none text-white font-mono text-xs w-full" autofocus autocomplete="off" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. CONTACT WINDOW WITH INVISIBLE / CLICK TO REVEAL EMAIL -->
+        <div id="winContact" class="retro-window top-16 left-8 sm:left-48 w-[450px] max-w-[94vw]" style="display: none;">
+          <div class="retro-titlebar" onmousedown="startDrag(event, 'winContact')">
+            <div class="flex items-center gap-1.5">
+              <span>💌</span> <span>Outlook Express — Contact Alvir</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="retro-btn" onclick="minimizeWindow('winContact')">_</button>
+              <button class="retro-btn" onclick="closeWindow('winContact')">✕</button>
+            </div>
+          </div>
+          <div class="p-3 bg-[#c0c0c0] space-y-3">
+            <div class="bg-white p-3 retro-inward-box text-xs space-y-3">
+              
+              <!-- 💌 INVISIBLE / CLICK TO REVEAL EMAIL BUTTON -->
+              <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div class="flex items-center justify-between">
+                  <span class="text-slate-600 font-semibold">Direct Email:</span>
+                  <div id="emailRevealerContainer">
+                    <button id="btnRevealEmail" onclick="revealEmailAddress()" class="px-3.5 py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-lg shadow transition flex items-center gap-1.5">
+                      <span>💌 Click to Reveal Email</span>
+                    </button>
+                    <div id="revealedEmailBox" class="hidden flex items-center gap-2">
+                      <a id="emailMailtoLink" href="mailto:saplaali56@gmail.com" class="text-blue-700 font-bold hover:underline font-mono">saplaali56@gmail.com</a>
+                      <button onclick="copyEmailToClipboard()" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold border border-slate-400 rounded transition">Copy</button>
+                    </div>
+                  </div>
+                </div>
+                <div id="emailCopiedBadge" class="hidden text-[10px] text-emerald-600 font-bold mt-1 text-right">
+                  ✓ Email copied to clipboard!
+                </div>
+              </div>
+
+              <!-- LinkedIn with New Profile URL -->
+              <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span class="text-slate-600 font-semibold">LinkedIn:</span>
+                <a id="linkedinLink" href="https://www.linkedin.com/in/alvir-shahriar-15bb1232a/" target="_blank" class="text-blue-700 font-bold hover:underline flex items-center gap-1">
+                  <span>Connect on LinkedIn</span> <span>↗</span>
+                </a>
+              </div>
+
+              <!-- GitHub -->
+              <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <span class="text-slate-600 font-semibold">GitHub:</span>
+                <a href="https://github.com/Alvirwebd" target="_blank" class="text-blue-700 font-bold hover:underline flex items-center gap-1">
+                  <span>github.com/Alvirwebd</span> <span>↗</span>
+                </a>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <button onclick="revealEmailAddress(); window.location.href='mailto:saplaali56@gmail.com';" class="px-4 py-1.5 bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs rounded border border-blue-900 shadow">
+                Send Direct Message ✉️
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. ALVIRAMP MUSIC PLAYER -->
+        <div id="winPlayer" class="retro-window top-12 right-6 sm:right-12 w-[340px] max-w-[94vw]" style="display: none;">
+          <div class="retro-titlebar" onmousedown="startDrag(event, 'winPlayer')">
+            <div class="flex items-center gap-1.5">
+              <span>🎵</span> <span>AlvirAmp v2.0 — Custom Audio Player</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="retro-btn" onclick="minimizeWindow('winPlayer')">_</button>
+              <button class="retro-btn" onclick="closeWindow('winPlayer')">✕</button>
+            </div>
+          </div>
+          <div class="p-3 bg-[#1e2025] text-green-400 font-mono text-xs space-y-2.5">
+            <div class="bg-black p-2 rounded border border-green-800 flex items-center justify-between">
+              <span id="playerTrackTitle" class="truncate">1. Ambient Lo-Fi Chill Synth</span>
+              <span class="text-amber-400 animate-pulse text-[10px]">128kbps</span>
+            </div>
+
+            <div class="flex items-end gap-1 h-8 bg-black/70 p-1 rounded overflow-hidden">
+              <div id="bar1" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 60%"></div>
+              <div id="bar2" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 85%"></div>
+              <div id="bar3" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 40%"></div>
+              <div id="bar4" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 75%"></div>
+              <div id="bar5" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 95%"></div>
+              <div id="bar6" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 50%"></div>
+              <div id="bar7" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 70%"></div>
+              <div id="bar8" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 35%"></div>
+            </div>
+
+            <div class="flex items-center justify-center gap-2 pt-1">
+              <button onclick="toggleMusicPlayback()" id="btnPlayPause" class="retro-btn w-16 h-7 text-xs font-bold text-black">⏸ Pause</button>
+              <button onclick="stopMusicPlayback()" class="retro-btn w-14 h-7 text-xs font-bold text-black">⏹ Stop</button>
+            </div>
+
+            <div class="border-t border-slate-700 pt-2 text-[11px] text-slate-300">
+              <label class="block font-sans font-bold text-amber-300 mb-1">🎧 Play Your Own Audio File:</label>
+              <div class="flex items-center gap-2">
+                <input type="file" id="customAudioInput" accept="audio/*" class="text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" />
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1">Select any .mp3 from your phone or PC!</div>
+            </div>
+            <audio id="customAudioElement" loop></audio>
+          </div>
+        </div>
+
+        <!-- 7. MINESWEEPER -->
+        <div id="winMinesweeper" class="retro-window top-10 left-24 sm:left-48 w-[250px]" style="display: none;">
+          <div class="retro-titlebar" onmousedown="startDrag(event, 'winMinesweeper')">
+            <div class="flex items-center gap-1.5">
+              <span>💣</span> <span>Minesweeper</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button class="retro-btn" onclick="minimizeWindow('winMinesweeper')">_</button>
+              <button class="retro-btn" onclick="closeWindow('winMinesweeper')">✕</button>
+            </div>
+          </div>
+          <div class="p-2 bg-[#c0c0c0] flex flex-col items-center">
+            <div class="w-full bg-[#c0c0c0] p-1.5 retro-inward-box flex items-center justify-between mb-2">
+              <div class="font-mono text-red-600 bg-black px-1.5 py-0.5 text-sm font-bold" id="mineCount">010</div>
+              <button onclick="resetMinesweeper()" class="retro-btn w-6 h-6 text-base" id="mineFace">🙂</button>
+              <div class="font-mono text-red-600 bg-black px-1.5 py-0.5 text-sm font-bold" id="mineTimer">000</div>
+            </div>
+            <div id="mineGrid" class="grid grid-cols-9 gap-0.5 bg-[#808080] p-1 border-2 border-[#808080]"></div>
+          </div>
+        </div>
+
+        <!-- START MENU POPUP -->
+        <div id="crtStartMenu" style="display: none;">
+          <div class="start-sidebar">AlvirOS 98</div>
+          <div class="start-items">
+            <div class="start-item" onclick="openWindow('winProjects'); toggleStartMenu();">
+              <span>📁</span> <span>My Projects</span>
+            </div>
+            <div class="start-item" onclick="openWindow('winResearch'); toggleStartMenu();">
+              <span>🔬</span> <span>Foundry Lab Research</span>
+            </div>
+            <div class="start-item" onclick="openWindow('winEducation'); toggleStartMenu();">
+              <span>🎓</span> <span>Education (IIUC)</span>
+            </div>
+            <div class="start-item" onclick="openWindow('winTerminal'); toggleStartMenu();">
+              <span>📟</span> <span>Terminal CLI</span>
+            </div>
+            <div class="start-item" onclick="openNotebook(); toggleStartMenu();">
+              <span>✍️</span> <span>Leave a Thought</span>
+            </div>
+            <div class="start-item" onclick="openWindow('winPlayer'); toggleStartMenu();">
+              <span>🎵</span> <span>AlvirAmp (Music)</span>
+            </div>
+            <div class="start-item" onclick="openWindow('winMinesweeper'); toggleStartMenu();">
+              <span>💣</span> <span>Minesweeper</span>
+            </div>
+            <div class="start-item" onclick="openWindow('winContact'); toggleStartMenu();">
+              <span>💌</span> <span>Contact Alvir</span>
+            </div>
+            <div class="border-t border-[#808080] my-1"></div>
+            <div class="start-item" onclick="exitWorkstation(); toggleStartMenu();">
+              <span>🚪</span> <span>Stand Up / Room View</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TASKBAR -->
+        <div class="retro-taskbar mt-auto">
+          <div class="flex items-center gap-2">
+            <button id="crtBtnStart" class="start-btn" onclick="toggleStartMenu()">
+              <span class="text-sm">🪟</span>
+              <span>Start</span>
+            </button>
+            <div class="w-[2px] h-5 bg-[#808080] border-r border-white"></div>
+            <div id="taskbarTabs" class="flex items-center gap-1 overflow-x-auto"></div>
+          </div>
+          <div class="flex items-center gap-2 bg-[#c0c0c0] px-2.5 py-1 border-top border-left border-[#808080] border-right border-bottom border-white text-xs font-mono text-black">
+            <span>🔊</span>
+            <span id="retroClock">12:00 PM</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       SPIRAL NOTEBOOK OVERLAY MODAL (CUTE & INTERACTIVE THOUGHT JOURNAL)
+       ========================================================================= -->
+  <div id="notebookOverlay">
+    <div class="notebook-book">
+      <!-- Spiral Binding Rings -->
+      <div class="spiral-binding">
+        <div class="spiral-ring"></div><div class="spiral-ring"></div>
+        <div class="spiral-ring"></div><div class="spiral-ring"></div>
+        <div class="spiral-ring"></div><div class="spiral-ring"></div>
+        <div class="spiral-ring"></div><div class="spiral-ring"></div>
+        <div class="spiral-ring"></div><div class="spiral-ring"></div>
+        <div class="spiral-ring"></div><div class="spiral-ring"></div>
+      </div>
+
+      <!-- Notebook Header -->
+      <div class="px-6 py-3 border-b-2 border-[#44372E]/30 bg-[#D7AD49]/15 flex items-center justify-between pl-8">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">✍️</span>
+          <div>
+            <span class="font-retro text-[15px] text-[#44372E] tracking-wide block leading-tight">Alvir's Unfiltered Thoughts &amp; Notes</span>
+            <div class="text-[10px] text-[#315A4A] font-mono font-semibold mt-0.5 tracking-wide">"Every visitor leaves a trace."</div>
+          </div>
+        </div>
+        <button onclick="closeNotebook()" class="w-8 h-8 rounded-[3px] bg-[#44372E] hover:bg-[#315A4A] text-[#EAE3D5] font-bold flex items-center justify-center text-xs transition border border-[#2A211B] shadow-[2px_2px_0_rgba(0,0,0,0.3)]">✕</button>
+      </div>
+
+      <!-- Notebook Pages -->
+      <div class="flex-1 p-6 pl-10 overflow-y-auto book-scroll font-hand text-slate-800 text-lg sm:text-xl leading-relaxed space-y-4">
+        
+        <!-- PAGE 1: THE VISITOR PACT & PERSISTENT THOUGHT WRITER -->
+        <div id="notePage1" class="space-y-4">
+          <div class="border-b-2 border-dashed border-amber-300 pb-2 flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-amber-900 uppercase">THE VISITOR PACT // LEAVE YOUR MARK</span>
+            <span class="text-[11px] font-mono text-emerald-700 font-bold">● Live Shared Community Wall</span>
+          </div>
+
+          <div class="p-4 bg-[#D7AD49]/15 border border-[#44372E]/40 rounded-[4px] shadow-[2px_2px_0_rgba(68,55,46,0.18)] space-y-2">
+            <p class="text-xl sm:text-2xl text-[#44372E] font-bold leading-snug">
+              "You stopped by my desk for a reason. Before you leave, leave a thought."
+            </p>
+            <p class="text-xs sm:text-sm text-[#44372E]/80 font-sans leading-relaxed">
+              Whether it's honest advice, what you're currently building, or an unfiltered thought — write it below. As many people as visit can share their thoughts here!
+            </p>
+          </div>
+
+          <!-- Interactive Thought Writer with Pastel Sticky Note Colors -->
+          <div class="p-4 bg-[#F3EDDF] border border-[#44372E]/40 rounded-[4px] shadow-[2px_2px_0_rgba(68,55,46,0.18)] space-y-3 font-sans">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-[#44372E] font-retro tracking-wide">Write on a Sticky Note:</span>
+              <div class="flex items-center gap-1.5">
+                <button type="button" onclick="selectStickyColor('yellow')" class="w-4 h-4 rounded-full bg-yellow-200 border-2 border-amber-400"></button>
+                <button type="button" onclick="selectStickyColor('peach')" class="w-4 h-4 rounded-full bg-rose-200 border-2 border-rose-400"></button>
+                <button type="button" onclick="selectStickyColor('mint')" class="w-4 h-4 rounded-full bg-emerald-200 border-2 border-emerald-400"></button>
+                <button type="button" onclick="selectStickyColor('sky')" class="w-4 h-4 rounded-full bg-sky-200 border-2 border-sky-400"></button>
+              </div>
+            </div>
+
+            <div class="flex gap-2 flex-wrap sm:flex-nowrap">
+              <input id="visitorNameInput" type="text" placeholder="Your Name or Alias..." class="w-full sm:w-1/2 p-2 bg-[#FFFDF6] border border-[#44372E]/50 rounded-[3px] text-xs text-[#44372E] font-mono placeholder-[#44372E]/40 focus:outline-none focus:border-[#315A4A] shadow-[inset_1px_1px_0_rgba(68,55,46,0.12)]" />
+              <input id="visitorRoleInput" type="text" placeholder="What you do (Dev, Founder, Friend)..." class="w-full sm:w-1/2 p-2 bg-[#FFFDF6] border border-[#44372E]/50 rounded-[3px] text-xs text-[#44372E] font-mono placeholder-[#44372E]/40 focus:outline-none focus:border-[#315A4A] shadow-[inset_1px_1px_0_rgba(68,55,46,0.12)]" />
+            </div>
+
+            <textarea id="visitorNoteInput" class="w-full h-24 p-3 bg-[#FFFDF6] border border-[#44372E]/50 rounded-[3px] font-hand text-xl text-[#44372E] placeholder-[#44372E]/40 focus:outline-none focus:border-[#315A4A] shadow-[inset_1px_1px_0_rgba(68,55,46,0.12)]" placeholder="Drop your honest thought here..."></textarea>
+
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <button onclick="saveVisitorNote()" class="px-5 py-2.5 bg-[#315A4A] hover:bg-[#3E6E5B] text-[#EAE3D5] font-mono text-xs font-bold rounded-[3px] border border-[#234034] shadow-[2px_2px_0_rgba(0,0,0,0.35)] transition active:translate-y-[1px] active:shadow-[1px_1px_0_rgba(0,0,0,0.35)] flex items-center gap-1.5">
+                <span>Pin Thought to Desk</span> <span>📌</span>
+              </button>
+              <span id="visitorNoteSuccess" class="hidden text-xs text-[#315A4A] font-bold animate-pulse">✓ Your thought is etched into Alvir's desk!</span>
+            </div>
+          </div>
+
+          <!-- Live Pinned Thoughts Stream -->
+          <div class="pt-2 border-t border-slate-200">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider">Thoughts Left by Visitors (<span id="thoughtCount">4</span>):</span>
+              <span class="text-[10px] text-slate-400 font-mono">Persists on Desk</span>
+            </div>
+            <div id="pinnedThoughtsList" class="space-y-2.5 text-sm font-sans"></div>
+          </div>
+        </div>
+
+        <!-- PAGE 2: ALVIR'S PERSONAL PHILOSOPHY & MINDSETS -->
+        <div id="notePage2" class="space-y-4" style="display: none;">
+          <div class="border-b-2 border-dashed border-[#44372E]/30 pb-2 flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-[#315A4A] uppercase">ENTRY #02: LATE NIGHTS &amp; REASON</span>
+            <span class="text-[11px] font-mono text-[#44372E]/50">2:45 AM Reflections</span>
+          </div>
+
+          <p class="text-2xl text-[#44372E] leading-snug">
+            "I don't write code to show off syntax. I write code because I love taking a blank screen and making something work that didn't exist an hour ago."
+          </p>
+
+          <p class="text-[#44372E]/80">
+            At IIUC, during 3rd semester, I spent 48 hours straight debugging a race condition in a relational database engine. People asked why I didn't just use a generic template. But when you build it with your own hands, you own every byte. That obsession with ownership is what drives my work.
+          </p>
+
+          <p class="text-[#44372E]/80">
+            At <strong>Foundry Lab</strong>, exploring LLMs taught me that true AI engineering isn't writing clever prompts — it's constructing rigorous evaluation benchmarks, preventing hallucinations, and holding machines accountable to human cognitive standards.
+          </p>
+
+          <div class="p-3.5 bg-[#315A4A]/15 border border-[#315A4A]/40 rounded-[3px] font-sans text-xs text-[#315A4A] font-semibold shadow-[2px_2px_0_rgba(68,55,46,0.15)]">
+            "Taste is knowing what to subtract. Speed is knowing what not to touch."
+          </div>
+        </div>
+
+        <!-- PAGE 3: UNFILTERED CONFESSIONS & RULES I CODE BY -->
+        <div id="notePage3" class="space-y-4" style="display: none;">
+          <div class="border-b-2 border-dashed border-[#44372E]/30 pb-2 flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-[#A87F2A] uppercase">ENTRY #03: RULES I LIVE &amp; CODE BY</span>
+            <span class="text-[11px] font-mono text-[#44372E]/50">Core Principles</span>
+          </div>
+
+          <div class="space-y-3 font-sans text-xs text-[#44372E]/80">
+            <div class="p-3.5 bg-[#FFFDF6] border border-[#44372E]/40 rounded-[3px] shadow-[2px_2px_0_rgba(68,55,46,0.15)]">
+              <strong class="text-[#44372E] text-sm block mb-1">1. Respect the User's Attention.</strong>
+              Don't build generic bloated templates with 50 marketing buzzwords. Make the product fast, tactile, and unforgettable.
+            </div>
+
+            <div class="p-3.5 bg-[#FFFDF6] border border-[#44372E]/40 rounded-[3px] shadow-[2px_2px_0_rgba(68,55,46,0.15)]">
+              <strong class="text-[#44372E] text-sm block mb-1">2. Understand Under the Hood.</strong>
+              If you don't understand how your database indexes queries or how your render loop draws frames, you're not engineering — you're guessing.
+            </div>
+
+            <div class="p-3.5 bg-[#FFFDF6] border border-[#44372E]/40 rounded-[3px] shadow-[2px_2px_0_rgba(68,55,46,0.15)]">
+              <strong class="text-[#44372E] text-sm block mb-1">3. Ship Real Things.</strong>
+              Ideas are cheap. Working code with live users (like EduLearn, NextGenNerds, and Foundry Lab papers) is all that speaks.
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Notebook Pagination -->
+      <div class="px-6 py-3 border-t-2 border-[#44372E]/30 bg-[#D7AD49]/15 flex items-center justify-between text-xs font-sans pl-8">
+        <button id="btnPrevPage" onclick="prevNotePage()" class="px-3.5 py-1.5 bg-[#EAE3D5] hover:bg-[#D7AD49]/40 border border-[#44372E]/50 rounded-[3px] font-mono font-bold text-[#44372E] transition shadow-[2px_2px_0_rgba(68,55,46,0.25)] disabled:opacity-40">◀ Prev Page</button>
+        <span id="notebookPageIndicator" class="font-mono text-[#44372E] font-bold tracking-wide">Page 1 of 3</span>
+        <button id="btnNextPage" onclick="nextNotePage()" class="px-3.5 py-1.5 bg-[#EAE3D5] hover:bg-[#D7AD49]/40 border border-[#44372E]/50 rounded-[3px] font-mono font-bold text-[#44372E] transition shadow-[2px_2px_0_rgba(68,55,46,0.25)] disabled:opacity-40">Next Page ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       CUTE CONTACT POPUP MODAL (WITH INVISIBLE / CLICK TO REVEAL EMAIL)
+       ========================================================================= -->
+  <div id="contactModal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="w-full max-w-md bg-[#171C23] border border-[#EAE3D5]/30 rounded-[3px] shadow-[6px_6px_0_rgba(0,0,0,0.6)] text-center relative overflow-hidden">
+      <!-- titlebar -->
+      <div class="h-8 flex items-center gap-2 px-3 bg-[#D7AD49] border-b-[1.5px] border-[#10151D]">
+        <span class="font-retro text-[11px] text-[#10151D] tracking-[0.08em]">CONTACT.SYS</span>
+        <span class="ml-auto font-mono text-[8px] tracking-[0.2em] text-[#10151D]/70">— ▢ ✕</span>
+      </div>
+      <button onclick="closeContactModal()" class="absolute top-1 right-1 z-10 w-6 h-6 rounded-[2px] bg-[#EAE3D5] hover:bg-[#D7AD49] text-[#10151D] font-bold flex items-center justify-center text-xs border border-[#10151D]">✕</button>
+
+      <div class="px-6 pt-5 pb-6">
+        <div class="text-3xl mb-1.5 pointer-events-none select-none">💌</div>
+        <h3 class="font-retro text-[16px] text-[#EAE3D5] tracking-wide">say hello to alvir</h3>
+        <p class="text-[10px] text-[#EAE3D5]/55 font-mono mt-1 mb-5 tracking-wide">have a project, research idea, or just want to chat? reach out!</p>
+
+        <div class="space-y-3 text-left text-xs">
+          <!-- Revealable Email Box -->
+          <div class="p-3.5 bg-[#10151D] rounded-[3px] border border-[#EAE3D5]/20">
+            <div class="flex items-center justify-between">
+              <span class="text-[#EAE3D5]/60 font-mono font-semibold tracking-wide">Direct Email:</span>
+              <div id="modalEmailContainer">
+                <button id="btnModalReveal" onclick="revealEmailInModal()" class="px-3.5 py-1.5 bg-[#EAE3D5] hover:bg-[#D7AD49] text-[#10151D] font-retro text-[10px] tracking-wide rounded-[2px] border-[1.5px] border-[#10151D] shadow-[2px_2px_0_rgba(0,0,0,0.5)] transition flex items-center gap-1.5">
+                  <span>💌 Click to Reveal Email</span>
+                </button>
+                <div id="modalRevealedEmail" class="hidden flex items-center gap-2">
+                  <a href="mailto:saplaali56@gmail.com" class="text-[#D7AD49] font-bold hover:underline font-mono">saplaali56@gmail.com</a>
+                  <button onclick="copyEmailToClipboard()" class="px-2 py-1 bg-[#171C23] hover:bg-[#347E79] text-[#EAE3D5] text-[10px] font-bold rounded-[2px] border border-[#EAE3D5]/30 transition">Copy</button>
+                </div>
+              </div>
+            </div>
+            <div id="modalEmailCopied" class="hidden text-[10px] text-emerald-400 font-bold mt-1 text-right">
+              ✓ Copied to clipboard!
+            </div>
+          </div>
+
+          <!-- LinkedIn URL -->
+          <a id="modalLinkedinLink" href="https://www.linkedin.com/in/alvir-shahriar-15bb1232a/" target="_blank" class="flex items-center justify-between p-3.5 bg-[#10151D] hover:bg-[#171C23] rounded-[3px] border border-[#EAE3D5]/20 hover:border-[#D7AD49]/60 transition group">
+            <div class="flex items-center gap-2.5">
+              <span class="text-lg">💼</span>
+              <div>
+                <div class="font-retro text-[12px] text-[#EAE3D5] tracking-wide">LinkedIn Profile</div>
+                <div class="text-[10px] text-[#EAE3D5]/50 font-mono mt-0.5">Connect &amp; Network</div>
+              </div>
+            </div>
+            <span class="text-[#D7AD49] font-retro text-[10px] tracking-wide group-hover:translate-x-1 transition">Open ↗</span>
+          </a>
+
+          <!-- GitHub Profile -->
+          <a href="https://github.com/Alvirwebd" target="_blank" class="flex items-center justify-between p-3.5 bg-[#10151D] hover:bg-[#171C23] rounded-[3px] border border-[#EAE3D5]/20 hover:border-[#D7AD49]/60 transition group">
+            <div class="flex items-center gap-2.5">
+              <span class="text-lg">🐙</span>
+              <div>
+                <div class="font-retro text-[12px] text-[#EAE3D5] tracking-wide">GitHub Profile</div>
+                <div class="text-[10px] text-[#EAE3D5]/50 font-mono mt-0.5">github.com/Alvirwebd</div>
+              </div>
+            </div>
+            <span class="text-[#D7AD49] font-retro text-[10px] tracking-wide group-hover:translate-x-1 transition">Open ↗</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT: THREE.JS + AUDIO + NOTEBOOK + PERSISTENCE -->
+  <script>
+    /* =====================================================================
+       1. THREE.JS 3D SCENE SETUP
+       ===================================================================== */
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x06080d);
+    scene.fog = new THREE.FogExp2(0x06080d, 0.04);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    
+    const CAM_ROOM_POS = new THREE.Vector3(0, 1.8, 4.2);
+    const CAM_ROOM_TARGET = new THREE.Vector3(0, 0.45, 0);
+    const CAM_MONITOR_POS = new THREE.Vector3(0, 0.65, 1.55);
+    const CAM_MONITOR_TARGET = new THREE.Vector3(0, 0.65, 0.1);
+
+    camera.position.copy(CAM_ROOM_POS);
+    camera.lookAt(CAM_ROOM_TARGET);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0x1a2233, 0.9);
+    scene.add(ambientLight);
+
+    const lampLight = new THREE.SpotLight(0xffdf99, 3.8);
+    lampLight.position.set(-0.88, 1.24, 0.6);
+    lampLight.target.position.set(0, 0.25, 0.3);
+    lampLight.angle = Math.PI / 3.0;
+    lampLight.penumbra = 0.55;
+    lampLight.castShadow = true;
+    lampLight.shadow.mapSize.width = 1024;
+    lampLight.shadow.mapSize.height = 1024;
+    lampLight.shadow.bias = -0.001;
+    scene.add(lampLight);
+    scene.add(lampLight.target);
+
+    const screenGlow = new THREE.PointLight(0x38bdf8, 1.2, 3.5);
+    screenGlow.position.set(0, 0.8, 0.45);
+    scene.add(screenGlow);
+
+    const fillLight = new THREE.DirectionalLight(0x2a3b5c, 0.6);
+    fillLight.position.set(2, 3, 2);
+    scene.add(fillLight);
+
+    /* =====================================================================
+       2. SCULPTED 3D OBJECTS
+       ===================================================================== */
+    // Desk Top
+    const deskTop = new THREE.Mesh(
+      new THREE.BoxGeometry(4.2, 0.12, 2.2),
+      new THREE.MeshStandardMaterial({ color: 0x3a2416, roughness: 0.4, metalness: 0.1 })
+    );
+    deskTop.position.set(0, 0, 0);
+    deskTop.receiveShadow = true;
+    deskTop.castShadow = true;
+    scene.add(deskTop);
+
+    // Mousepad
+    const mousepad = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.015, 1.0),
+      new THREE.MeshStandardMaterial({ color: 0x111622, roughness: 0.8 })
+    );
+    mousepad.position.set(0, 0.065, 0.35);
+    mousepad.receiveShadow = true;
+    scene.add(mousepad);
+
+    // CRT Monitor
+    const crtGroup = new THREE.Group();
+    crtGroup.position.set(0, 0.06, -0.15);
+    const crtShell = new THREE.Mesh(
+      new THREE.BoxGeometry(1.65, 1.25, 1.15),
+      new THREE.MeshStandardMaterial({ color: 0x2e333d, roughness: 0.5 })
+    );
+    crtShell.position.set(0, 0.85, 0);
+    crtShell.castShadow = true;
+    crtGroup.add(crtShell);
+
+    const crtGlass = new THREE.Mesh(
+      new THREE.BoxGeometry(1.38, 1.0, 0.05),
+      new THREE.MeshStandardMaterial({ color: 0x008080, emissive: 0x004040, emissiveIntensity: 0.5, roughness: 0.15 })
+    );
+    crtGlass.position.set(0, 0.88, 0.58);
+    crtGlass.name = "monitorGlass";
+    crtGroup.add(crtGlass);
+    scene.add(crtGroup);
+
+    // Sculpted Desk Lamp with Glowing Top Light
+    const lampGroup = new THREE.Group();
+    lampGroup.position.set(-1.6, 0.06, 0.6);
+
+    // Lamp Base
+    const lampBase = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.22, 0.04, 24),
+      new THREE.MeshStandardMaterial({ color: 0x1e242d, metalness: 0.6, roughness: 0.3 })
+    );
+    lampGroup.add(lampBase);
+
+    // Angled Stem Stick
+    const lampStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 1.6, 16),
+      new THREE.MeshStandardMaterial({ color: 0x1e242d, metalness: 0.6, roughness: 0.3 })
+    );
+    lampStem.position.set(0, 0.8, 0);
+    lampStem.rotation.z = -0.22;
+    lampGroup.add(lampStem);
+
+    // Elbow Joint Sphere on top of the stick
+    const jointX = 0.35;
+    const jointY = 1.56;
+    const lampJoint = new THREE.Mesh(
+      new THREE.SphereGeometry(0.055, 16, 16),
+      new THREE.MeshStandardMaterial({ color: 0x2e3644, metalness: 0.8, roughness: 0.2 })
+    );
+    lampJoint.position.set(jointX, jointY, 0);
+    lampGroup.add(lampJoint);
+
+    // Angled Arm extending towards desk
+    const armGroup = new THREE.Group();
+    armGroup.position.set(jointX, jointY, 0);
+
+    const lampArm = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.02, 0.45, 16),
+      new THREE.MeshStandardMaterial({ color: 0x1e242d, metalness: 0.6, roughness: 0.3 })
+    );
+    lampArm.position.set(0.18, -0.06, 0);
+    lampArm.rotation.z = -0.85;
+    armGroup.add(lampArm);
+
+    // Lamp Cone Hood / Shade — opening faces down toward the desk
+    const shadeMesh = new THREE.Mesh(
+      new THREE.ConeGeometry(0.26, 0.36, 24, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x151922, metalness: 0.4, roughness: 0.25, side: THREE.DoubleSide })
+    );
+    shadeMesh.position.set(0.36, -0.24, 0);
+    shadeMesh.rotation.z = 0.32;
+    armGroup.add(shadeMesh);
+
+    // Glowing bulb tucked just inside the shade mouth
+    const bulbMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfff6cf })
+    );
+    bulbMesh.position.set(0.42, -0.40, 0);
+    armGroup.add(bulbMesh);
+
+    // Soft additive halo so the light reads as glow, not a floating disc
+    const glowHalo = new THREE.Mesh(
+      new THREE.SphereGeometry(0.13, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffdf88, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    glowHalo.position.copy(bulbMesh.position);
+    armGroup.add(glowHalo);
+
+    lampGroup.add(armGroup);
+    scene.add(lampGroup);
+
+    // Dedicated Point Light directly situated at the lamp bulb
+    const lampBulbLight = new THREE.PointLight(0xffdf88, 3.8, 5.0, 1.3);
+    lampBulbLight.position.set(-0.84, 1.20, 0.6);
+    scene.add(lampBulbLight);
+
+    // 📖 NOTEBOOK WITH WARM COVER TEXTURE
+    const nbCanvas = document.createElement('canvas');
+    nbCanvas.width = 512;
+    nbCanvas.height = 700;
+    const nbCtx = nbCanvas.getContext('2d');
+    nbCtx.fillStyle = '#315A4A';
+    nbCtx.fillRect(0, 0, 512, 700);
+    nbCtx.strokeStyle = '#D7AD49';
+    nbCtx.lineWidth = 10;
+    nbCtx.strokeRect(20, 20, 472, 660);
+
+    nbCtx.fillStyle = '#fef08a';
+    nbCtx.font = 'bold 36px sans-serif';
+    nbCtx.textAlign = 'center';
+    nbCtx.fillText('UNFILTERED THOUGHTS', 256, 180);
+
+    nbCtx.font = 'italic 24px sans-serif';
+    nbCtx.fillStyle = '#93c5fd';
+    nbCtx.fillText('Leave your thought inside ✍️', 256, 300);
+
+    const nbTexture = new THREE.CanvasTexture(nbCanvas);
+
+    const notebookGroup = new THREE.Group();
+    notebookGroup.position.set(-1.25, 0.075, 0.1);
+    notebookGroup.rotation.y = 0.2;
+
+    const nbCoverMat = [
+      new THREE.MeshStandardMaterial({ color: 0x064e3b }),
+      new THREE.MeshStandardMaterial({ color: 0x064e3b }),
+      new THREE.MeshStandardMaterial({ map: nbTexture, roughness: 0.3 }),
+      new THREE.MeshStandardMaterial({ color: 0x064e3b }),
+      new THREE.MeshStandardMaterial({ color: 0x064e3b }),
+      new THREE.MeshStandardMaterial({ color: 0x064e3b })
+    ];
+    const nbCover = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.03, 0.7), nbCoverMat);
+    nbCover.castShadow = true;
+    nbCover.name = "notebookMesh";
+    notebookGroup.add(nbCover);
+
+    const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.45), new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8 }));
+    pen.rotation.z = Math.PI / 2;
+    pen.position.set(0, 0.025, 0);
+    notebookGroup.add(pen);
+    scene.add(notebookGroup);
+
+    // Dust Particles
+    const dustCount = 75;
+    const dustGeo = new THREE.BufferGeometry();
+    const dustPositions = new Float32Array(dustCount * 3);
+    for (let i = 0; i < dustCount; i++) {
+      dustPositions[i * 3] = -0.8 + (Math.random() - 0.5) * 1.8;
+      dustPositions[i * 3 + 1] = 0.4 + Math.random() * 1.6;
+      dustPositions[i * 3 + 2] = -0.2 + (Math.random() - 0.5) * 1.4;
+    }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    const dustParticles = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xffecc2, size: 0.025, transparent: true, opacity: 0.65 }));
+    scene.add(dustParticles);
+
+    /* =====================================================================
+       3. CAMERA LERP & INTERACTION
+       ===================================================================== */
+    let isAtWorkstation = false;
+    let cameraLerpProgress = 1;
+    let camStartPos = camera.position.clone();
+    let camEndPos = CAM_ROOM_POS.clone();
+    let camStartTarget = CAM_ROOM_TARGET.clone();
+    let camEndTarget = CAM_ROOM_TARGET.clone();
+
+    const mouse = { x: 0, y: 0 };
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    function enterWorkstation() {
+      if (isAtWorkstation) return;
+      isAtWorkstation = true;
+      camStartPos = camera.position.clone();
+      camEndPos = CAM_MONITOR_POS.clone();
+      camStartTarget = CAM_ROOM_TARGET.clone();
+      camEndTarget = CAM_MONITOR_TARGET.clone();
+      cameraLerpProgress = 0;
+
+      document.getElementById('roomHeader').style.opacity = '0';
+      document.getElementById('roomFooter').style.opacity = '0';
+      document.getElementById('clickPrompt').style.opacity = '0';
+      document.getElementById('clickPrompt').style.pointerEvents = 'none';
+      document.getElementById('notebookPill').style.opacity = '0';
+      document.getElementById('notebookPill').style.pointerEvents = 'none';
+
+      setTimeout(() => {
+        document.getElementById('monitorContainer').classList.add('active-workstation');
+        if (!hasOpenedProjects) {
+          openWindow('winProjects');
+          hasOpenedProjects = true;
+        }
+      }, 420);
+    }
+    let hasOpenedProjects = false;
+
+    let lastWorkstationExitTime = 0;
+
+    function exitWorkstation(e) {
+      if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+      }
+      if (!isAtWorkstation) return;
+      isAtWorkstation = false;
+      lastWorkstationExitTime = Date.now();
+      document.getElementById('monitorContainer').classList.remove('active-workstation');
+
+      camStartPos = camera.position.clone();
+      camEndPos = CAM_ROOM_POS.clone();
+      camStartTarget = CAM_MONITOR_TARGET.clone();
+      camEndTarget = CAM_ROOM_TARGET.clone();
+      cameraLerpProgress = 0;
+
+      setTimeout(() => {
+        document.getElementById('roomHeader').style.opacity = '1';
+        document.getElementById('roomFooter').style.opacity = '1';
+        document.getElementById('clickPrompt').style.opacity = '1';
+        document.getElementById('clickPrompt').style.pointerEvents = 'auto';
+        document.getElementById('notebookPill').style.opacity = '1';
+        document.getElementById('notebookPill').style.pointerEvents = 'auto';
+      }, 300);
+    }
+
+    window.enterWorkstation = enterWorkstation;
+    window.exitWorkstation = exitWorkstation;
+
+    const raycaster = new THREE.Raycaster();
+    const mouseVector = new THREE.Vector2();
+
+    function handle3DClick(clientX, clientY, e) {
+      if (isAtWorkstation) return;
+      if (Date.now() - lastWorkstationExitTime < 700) return;
+      if (e && e.target) {
+        if (e.target.closest('#monitorContainer, #notebookOverlay, #contactModal, #projectsDrawer, #roomHeader, #roomFooter, .beacon-pod, button, a, input, textarea')) {
+          return;
+        }
+      }
+      mouseVector.x = (clientX / window.innerWidth) * 2 - 1;
+      mouseVector.y = -(clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouseVector, camera);
+
+      const intersects = raycaster.intersectObjects([crtGlass, crtShell, nbCover], true);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        if (hit === crtGlass || hit === crtShell) {
+          enterWorkstation();
+        } else if (hit === nbCover) {
+          openNotebook();
+        }
+      }
+    }
+
+    window.addEventListener('click', (e) => handle3DClick(e.clientX, e.clientY, e));
+    window.addEventListener('touchend', (e) => {
+      if (e.changedTouches && e.changedTouches.length > 0) {
+        const t = e.changedTouches[0];
+        handle3DClick(t.clientX, t.clientY, e);
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (isProjectsDrawerOpen) closeProjectsDrawer();
+        else if (isNotebookOpen) closeNotebook();
+        else if (isContactOpen) closeContactModal();
+        else if (isAtWorkstation) exitWorkstation();
+      }
+    });
+
+    /* =====================================================================
+       4. FREUD V3 PROJECTS DRAWER CONTROL
+       ===================================================================== */
+    let isProjectsDrawerOpen = false;
+
+    function openProjectsDrawer() {
+      const drawer = document.getElementById('projectsDrawer');
+      if (!drawer) return;
+      drawer.classList.add('drawer-open');
+      isProjectsDrawerOpen = true;
+    }
+
+    function closeProjectsDrawer() {
+      const drawer = document.getElementById('projectsDrawer');
+      if (!drawer) return;
+      drawer.classList.remove('drawer-open');
+      isProjectsDrawerOpen = false;
+    }
+
+    function handleDrawerBackdropClick(e) {
+      if (e.target.id === 'projectsDrawer') {
+        closeProjectsDrawer();
+      }
+    }
+
+    function filterDrawerProjects(cat) {
+      const cards = document.querySelectorAll('.project-grid-card');
+      const btns = document.querySelectorAll('.proj-filter-btn');
+      btns.forEach(b => {
+        b.classList.remove('bg-[#D7AD49]', 'text-[#10151D]', 'border-[#A87F2A]');
+        b.classList.add('bg-transparent', 'border-[#EAE3D5]/20', 'text-[#EAE3D5]/60');
+      });
+      const activeBtn = document.querySelector(`.proj-filter-btn[onclick="filterDrawerProjects('${cat}')"]`);
+      if (activeBtn) {
+        activeBtn.classList.remove('bg-transparent', 'border-[#EAE3D5]/20', 'text-[#EAE3D5]/60');
+        activeBtn.classList.add('bg-[#D7AD49]', 'text-[#10151D]', 'border-[#A87F2A]');
+      }
+
+      cards.forEach(card => {
+        if (cat === 'all' || card.dataset.category === cat) {
+          card.style.display = 'block';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    window.openProjectsDrawer = openProjectsDrawer;
+    window.closeProjectsDrawer = closeProjectsDrawer;
+    window.handleDrawerBackdropClick = handleDrawerBackdropClick;
+    window.filterDrawerProjects = filterDrawerProjects;
+
+    /* =====================================================================
+       4. PERSISTENT THOUGHTS JOURNAL & GUESTBOOK
+       ===================================================================== */
+    let isNotebookOpen = false;
+    let currentNotePage = 1;
+    const totalNotePages = 3;
+    let selectedStickyColor = 'yellow';
+
+    const defaultThoughts = [
+      { id: 1, text: "Never stop building things from scratch. Ownership is where true mastery comes from.", name: "Senior Systems Dev", role: "Engineer", color: "yellow", likes: 14 },
+      { id: 2, text: "The 3D desk with the CRT monitor brought back pure 90s nostalgia. Keep shipping, Alvir!", name: "Sarah Chen", role: "Design Engineer", color: "mint", likes: 9 },
+      { id: 3, text: "Great research focus on Bloom's Taxonomy for LLMs. Automated pedagogy needs this.", name: "Dr. K. Rahman", role: "AI Researcher", color: "peach", likes: 21 },
+      { id: 4, text: "Loved EduLearn's Socket.io peer rooms. That's real engineering.", name: "Tariqul", role: "CSE Junior", color: "sky", likes: 8 }
+    ];
+
+    function loadSavedThoughts() {
+      try {
+        const local = localStorage.getItem('alvir_visitor_thoughts');
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {}
+      return defaultThoughts;
+    }
+
+    let thoughtsList = loadSavedThoughts();
+
+    function renderThoughtsList() {
+      const container = document.getElementById('pinnedThoughtsList');
+      if (!container) return;
+      container.innerHTML = '';
+      document.getElementById('thoughtCount').textContent = thoughtsList.length;
+
+      thoughtsList.forEach((t) => {
+        const colorStyles = {
+          yellow: 'bg-yellow-100/90 border-amber-300 text-slate-800',
+          peach: 'bg-rose-100/90 border-rose-300 text-slate-800',
+          mint: 'bg-emerald-100/90 border-emerald-300 text-slate-800',
+          sky: 'bg-sky-100/90 border-sky-300 text-slate-800'
+        }[t.color || 'yellow'] || 'bg-yellow-100/90 border-amber-300 text-slate-800';
+
+        const item = document.createElement('div');
+        item.className = `note-sticky p-3 pt-3.5 border ${colorStyles} flex items-start justify-between gap-2 transition`;
+        item.innerHTML = `
+          <span class="note-pin${(thoughtsList.indexOf(t) % 2) ? ' alt' : ''}"></span>
+          <div>
+            <div class="font-hand text-xl text-slate-900 leading-snug">"${t.text}"</div>
+            <div class="text-[11px] font-sans text-slate-600 mt-1 font-semibold">
+              — <span class="text-slate-900 font-bold">${t.name}</span> <span class="text-slate-500">(${t.role})</span>
+            </div>
+          </div>
+          <button onclick="likeThought(${t.id})" class="px-2 py-1 bg-white/80 hover:bg-white text-[11px] font-sans font-bold text-rose-600 rounded-[3px] border border-slate-300/80 shadow-xs flex items-center gap-1 transition flex-shrink-0">
+            <span>❤️</span> <span>${t.likes || 1}</span>
+          </button>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function saveVisitorNote() {
+      const txt = document.getElementById('visitorNoteInput').value.trim();
+      const name = document.getElementById('visitorNameInput').value.trim() || 'Anonymous Visitor';
+      const role = document.getElementById('visitorRoleInput').value.trim() || 'Tech Explorer';
+
+      if (!txt) {
+        alert('Please write an honest thought before pinning!');
+        return;
+      }
+
+      const newEntry = {
+        id: Date.now(),
+        text: txt,
+        name: name,
+        role: role,
+        color: selectedStickyColor,
+        likes: 1
+      };
+
+      thoughtsList.unshift(newEntry);
+      try {
+        localStorage.setItem('alvir_visitor_thoughts', JSON.stringify(thoughtsList));
+      } catch (e) {}
+
+      renderThoughtsList();
+
+      document.getElementById('visitorNoteInput').value = '';
+      document.getElementById('visitorNoteSuccess').classList.remove('hidden');
+      setTimeout(() => document.getElementById('visitorNoteSuccess').classList.add('hidden'), 4500);
+    }
+
+    function likeThought(id) {
+      const item = thoughtsList.find(t => t.id === id);
+      if (item) {
+        item.likes = (item.likes || 0) + 1;
+        try {
+          localStorage.setItem('alvir_visitor_thoughts', JSON.stringify(thoughtsList));
+        } catch (e) {}
+        renderThoughtsList();
+      }
+    }
+
+    function selectStickyColor(c) {
+      selectedStickyColor = c;
+    }
+
+    function openNotebook() {
+      isNotebookOpen = true;
+      document.getElementById('notebookOverlay').classList.add('open-notebook');
+      showNotePage(1);
+      renderThoughtsList();
+    }
+    function closeNotebook() {
+      isNotebookOpen = false;
+      document.getElementById('notebookOverlay').classList.remove('open-notebook');
+    }
+    function showNotePage(page) {
+      currentNotePage = page;
+      document.getElementById('notePage1').style.display = page === 1 ? 'block' : 'none';
+      document.getElementById('notePage2').style.display = page === 2 ? 'block' : 'none';
+      document.getElementById('notePage3').style.display = page === 3 ? 'block' : 'none';
+      document.getElementById('notebookPageIndicator').textContent = `Page ${page} of ${totalNotePages}`;
+      document.getElementById('btnPrevPage').disabled = page === 1;
+      document.getElementById('btnNextPage').disabled = page === totalNotePages;
+    }
+    function nextNotePage() { if (currentNotePage < totalNotePages) showNotePage(currentNotePage + 1); }
+    function prevNotePage() { if (currentNotePage > 1) showNotePage(currentNotePage - 1); }
+
+    window.openNotebook = openNotebook;
+    window.closeNotebook = closeNotebook;
+    window.nextNotePage = nextNotePage;
+    window.prevNotePage = prevNotePage;
+    window.saveVisitorNote = saveVisitorNote;
+    window.likeThought = likeThought;
+    window.selectStickyColor = selectStickyColor;
+
+    /* =====================================================================
+       5. INVISIBLE / CLICK-TO-REVEAL EMAIL & CONTACT MODALS
+       ===================================================================== */
+    let isContactOpen = false;
+    const MY_EMAIL = "saplaali56@gmail.com";
+
+    function revealEmailAddress() {
+      document.getElementById('btnRevealEmail').classList.add('hidden');
+      document.getElementById('revealedEmailBox').classList.remove('hidden');
+      copyEmailToClipboard();
+    }
+
+    function revealEmailInModal() {
+      document.getElementById('btnModalReveal').classList.add('hidden');
+      document.getElementById('modalRevealedEmail').classList.remove('hidden');
+      copyEmailToClipboard();
+    }
+
+    function copyEmailToClipboard() {
+      navigator.clipboard.writeText(MY_EMAIL);
+      const b1 = document.getElementById('emailCopiedBadge');
+      const b2 = document.getElementById('modalEmailCopied');
+      if (b1) { b1.classList.remove('hidden'); setTimeout(() => b1.classList.add('hidden'), 3500); }
+      if (b2) { b2.classList.remove('hidden'); setTimeout(() => b2.classList.add('hidden'), 3500); }
+    }
+
+    function openContactModal() {
+      isContactOpen = true;
+      document.getElementById('contactModal').classList.remove('opacity-0', 'pointer-events-none');
+    }
+    function closeContactModal() {
+      isContactOpen = false;
+      document.getElementById('contactModal').classList.add('opacity-0', 'pointer-events-none');
+    }
+
+    window.revealEmailAddress = revealEmailAddress;
+    window.revealEmailInModal = revealEmailInModal;
+    window.copyEmailToClipboard = copyEmailToClipboard;
+    window.openContactModal = openContactModal;
+    window.closeContactModal = closeContactModal;
+
+    /* =====================================================================
+       6. ALVIROS WINDOWS & DRAGGING
+       ===================================================================== */
+    let highestZ = 30;
+
+    window.openWindow = function(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = 'flex';
+      highestZ += 2;
+      el.style.zIndex = highestZ;
+      updateTaskbarTabs();
+    };
+
+    window.closeWindow = function(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = 'none';
+      updateTaskbarTabs();
+    };
+
+    window.minimizeWindow = function(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+      updateTaskbarTabs();
+    };
+
+    const windowMeta = {
+      winProjects: { title: 'Projects', icon: '📁' },
+      winResearch: { title: 'Research.pdf', icon: '🔬' },
+      winEducation: { title: 'Education.txt', icon: '🎓' },
+      winTerminal: { title: 'Terminal', icon: '📟' },
+      winContact: { title: 'Contact', icon: '💌' },
+      winPlayer: { title: 'AlvirAmp', icon: '🎵' },
+      winMinesweeper: { title: 'Mines', icon: '💣' }
+    };
+
+    function updateTaskbarTabs() {
+      const bar = document.getElementById('taskbarTabs');
+      bar.innerHTML = '';
+      for (const [id, meta] of Object.entries(windowMeta)) {
+        const win = document.getElementById(id);
+        if (win && win.style.display !== 'none') {
+          const btn = document.createElement('button');
+          btn.className = 'px-2.5 py-1 bg-[#c0c0c0] border-t-2 border-l-2 border-white border-r-2 border-b-2 border-black text-[11px] font-bold text-black flex items-center gap-1 active:bg-[#a0a0a0]';
+          btn.innerHTML = `<span>${meta.icon}</span><span>${meta.title}</span>`;
+          btn.onclick = () => {
+            highestZ += 2;
+            win.style.zIndex = highestZ;
+          };
+          bar.appendChild(btn);
+        }
+      }
+    }
+
+    let activeDragWin = null;
+    let dragOffsetX = 0, dragOffsetY = 0;
+
+    window.startDrag = function(e, winId) {
+      if (window.innerWidth < 640) return;
+      activeDragWin = document.getElementById(winId);
+      if (!activeDragWin) return;
+      highestZ += 2;
+      activeDragWin.style.zIndex = highestZ;
+      const rect = activeDragWin.getBoundingClientRect();
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+    };
+
+    window.addEventListener('mousemove', (e) => {
+      if (activeDragWin) {
+        const crt = document.querySelector('.crt-screen').getBoundingClientRect();
+        let newX = e.clientX - crt.left - dragOffsetX;
+        let newY = e.clientY - crt.top - dragOffsetY;
+        activeDragWin.style.left = `${Math.max(5, Math.min(crt.width - 200, newX))}px`;
+        activeDragWin.style.top = `${Math.max(5, Math.min(crt.height - 80, newY))}px`;
+      }
+    });
+    window.addEventListener('mouseup', () => { activeDragWin = null; });
+
+    window.toggleStartMenu = function() {
+      const menu = document.getElementById('crtStartMenu');
+      menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+    };
+
+    function updateClock() {
+      const now = new Date();
+      let hours = now.getHours();
+      const mins = String(now.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      document.getElementById('retroClock').textContent = `${hours}:${mins} ${ampm}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    /* =====================================================================
+       7. SOFT BACKGROUND MUSIC & AUTOPLAY WITH ONE-CLICK MUTE
+       ===================================================================== */
+    let audioCtx = null;
+    let isSynthPlaying = false;
+    let synthInterval = null;
+    let hasAttemptedAutoplay = false;
+
+    const customAudio = document.getElementById('customAudioElement');
+    let isCustomAudioLoaded = false;
+
+    document.getElementById('customAudioInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const objUrl = URL.createObjectURL(file);
+        customAudio.src = objUrl;
+        isCustomAudioLoaded = true;
+        document.getElementById('playerTrackTitle').textContent = `📁 ${file.name}`;
+        playCustomAudio();
+      }
+    });
+
+    function syncAudioUI(isPlaying, label) {
+      const iconEl = document.getElementById('audioIcon');
+      const textEl = document.getElementById('audioStatusText');
+      const miniEq = document.getElementById('miniEq');
+      if (iconEl) iconEl.innerHTML = isPlaying
+        ? '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>'
+        : '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>';
+      if (textEl) textEl.textContent = label;
+      if (miniEq) {
+        if (isPlaying) {
+          miniEq.classList.remove('paused');
+          miniEq.classList.add('playing');
+        } else {
+          miniEq.classList.remove('playing');
+          miniEq.classList.add('paused');
+        }
+      }
+    }
+
+    function playCustomAudio() {
+      stopSynthChords();
+      customAudio.play();
+      document.getElementById('btnPlayPause').textContent = '⏸ Pause';
+      syncAudioUI(true, 'Custom Track');
+      startVisualizerAnimation();
+    }
+
+    function toggleMusicPlayback() {
+      if (isCustomAudioLoaded) {
+        if (customAudio.paused) {
+          playCustomAudio();
+        } else {
+          customAudio.pause();
+          document.getElementById('btnPlayPause').textContent = '▶ Play';
+          syncAudioUI(false, 'Music Paused');
+          stopVisualizerAnimation();
+        }
+      } else {
+        if (isSynthPlaying) {
+          stopSynthChords();
+          document.getElementById('btnPlayPause').textContent = '▶ Play';
+          syncAudioUI(false, 'Music Paused');
+        } else {
+          startSynthChords();
+          document.getElementById('btnPlayPause').textContent = '⏸ Pause';
+          syncAudioUI(true, 'Cozy Lo-Fi');
+        }
+      }
+    }
+
+    function stopMusicPlayback() {
+      if (isCustomAudioLoaded) {
+        customAudio.pause();
+        customAudio.currentTime = 0;
+      }
+      stopSynthChords();
+      document.getElementById('btnPlayPause').textContent = '▶ Play';
+      syncAudioUI(false, 'Music Muted');
+      stopVisualizerAnimation();
+    }
+
+    const chords = [
+      [261.63, 329.63, 392.00], // C major
+      [220.00, 261.63, 329.63], // A minor
+      [174.61, 220.00, 261.63], // F major
+      [196.00, 246.94, 293.66]  // G major
+    ];
+    let chordIdx = 0;
+
+    function startSynthChords() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      isSynthPlaying = true;
+      startVisualizerAnimation();
+
+      synthInterval = setInterval(() => {
+        if (!isSynthPlaying) return;
+        const cur = chords[chordIdx];
+        chordIdx = (chordIdx + 1) % chords.length;
+
+        cur.forEach(freq => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.018, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 1.8);
+        });
+      }, 1900);
+    }
+
+    function stopSynthChords() {
+      isSynthPlaying = false;
+      clearInterval(synthInterval);
+      stopVisualizerAnimation();
+    }
+
+    function attemptMusicAutoStart() {
+      if (hasAttemptedAutoplay) return;
+      hasAttemptedAutoplay = true;
+      if (!isSynthPlaying && !isCustomAudioLoaded) {
+        startSynthChords();
+        syncAudioUI(true, 'Cozy Lo-Fi');
+      }
+    }
+    window.addEventListener('click', attemptMusicAutoStart, { once: true });
+    window.addEventListener('keydown', attemptMusicAutoStart, { once: true });
+    window.addEventListener('touchstart', attemptMusicAutoStart, { once: true });
+
+    let vizInterval = null;
+    function startVisualizerAnimation() {
+      if (vizInterval) return;
+      vizInterval = setInterval(() => {
+        for (let i = 1; i <= 8; i++) {
+          const bar = document.getElementById(`bar${i}`);
+          if (bar) bar.style.height = `${25 + Math.random() * 70}%`;
+        }
+      }, 120);
+    }
+    function stopVisualizerAnimation() {
+      clearInterval(vizInterval);
+      vizInterval = null;
+      for (let i = 1; i <= 8; i++) {
+        const bar = document.getElementById(`bar${i}`);
+        if (bar) bar.style.height = '15%';
+      }
+    }
+
+    document.getElementById('btnAudioToggle').addEventListener('click', toggleMusicPlayback);
+    window.toggleMusicPlayback = toggleMusicPlayback;
+    window.stopMusicPlayback = stopMusicPlayback;
+
+    /* =====================================================================
+       8. TERMINAL CLI ENGINE
+       ===================================================================== */
+    const termInput = document.getElementById('termInput');
+    const termHistory = document.getElementById('termHistory');
+
+    const COMMANDS = {
+      help: () => `
+        <span class="text-yellow-400 font-bold">AVAILABLE COMMANDS:</span><br>
+        • <span class="text-white font-bold">whoami</span>     - About Alvir Shahriar<br>
+        • <span class="text-white font-bold">skills</span>     - Full-stack languages & tools<br>
+        • <span class="text-white font-bold">projects</span>   - Study & Skill Management, EduLearn, NextGenNerds<br>
+        • <span class="text-white font-bold">research</span>   - Foundry Lab LLM question generation paper<br>
+        • <span class="text-white font-bold">notebook</span>   - Open desk thoughts journal<br>
+        • <span class="text-white font-bold">contact</span>    - Direct email & social profiles<br>
+        • <span class="text-white font-bold">clear</span>      - Clear terminal
+      `,
+      whoami: () => `Alvir Shahriar — CSE 6th Semester at IIUC & Research Intern @ Foundry Lab.`,
+      skills: () => `Languages: JS/TS, Python, C++, SQL | Stack: React, Next.js, Node, Express, MongoDB, MySQL, Tailwind.`,
+      projects: () => `1. Study & Skill Management System<br>2. EduLearn (Full-Stack MERN + AI)<br>3. NextGenNerds (CS Community)`,
+      research: () => `Literature Review & Gap Analysis on LLM-based Automatic Educational Question Generation (Foundry Lab).`,
+      notebook: () => { openNotebook(); return `Opening desk thoughts journal...`; },
+      contact: () => `Email: saplaali56@gmail.com | GitHub: github.com/Alvirwebd`,
+      clear: () => { termHistory.innerHTML = ''; return ''; }
+    };
+
+    termInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const cmd = termInput.value.trim().toLowerCase();
+        termInput.value = '';
+        if (!cmd) return;
+
+        const line = document.createElement('div');
+        line.innerHTML = `<span class="text-emerald-400">alvir@workstation:~$</span> <span class="text-white">${cmd}</span>`;
+        termHistory.appendChild(line);
+
+        const out = document.createElement('div');
+        out.className = 'text-slate-300 text-xs mb-2 leading-relaxed';
+        if (COMMANDS[cmd]) {
+          const res = COMMANDS[cmd]();
+          if (res) { out.innerHTML = res; termHistory.appendChild(out); }
+        } else {
+          out.innerHTML = `<span class="text-red-400">Unknown command '${cmd}'. Type 'help'.</span>`;
+          termHistory.appendChild(out);
+        }
+        document.getElementById('terminalBody').scrollTop = document.getElementById('terminalBody').scrollHeight;
+      }
+    });
+
+    /* =====================================================================
+       9. MINESWEEPER GAME ENGINE
+       ===================================================================== */
+    const M_ROWS = 9, M_COLS = 9, M_MINES = 10;
+    let mineBoard = [], mineGameOver = false;
+
+    function resetMinesweeper() {
+      mineGameOver = false;
+      document.getElementById('mineFace').textContent = '🙂';
+      const grid = document.getElementById('mineGrid');
+      grid.innerHTML = '';
+      mineBoard = [];
+
+      for (let r = 0; r < M_ROWS; r++) {
+        mineBoard[r] = [];
+        for (let c = 0; c < M_COLS; c++) {
+          mineBoard[r][c] = { mine: false, count: 0, revealed: false };
+          const cell = document.createElement('button');
+          cell.className = 'w-5 h-5 bg-[#c0c0c0] border-t border-l border-white border-r border-b border-black text-xs font-bold flex items-center justify-center';
+          cell.onclick = () => clickMine(r, c);
+          grid.appendChild(cell);
+        }
+      }
+
+      let placed = 0;
+      while (placed < M_MINES) {
+        const rr = Math.floor(Math.random() * M_ROWS);
+        const cc = Math.floor(Math.random() * M_COLS);
+        if (!mineBoard[rr][cc].mine) {
+          mineBoard[rr][cc].mine = true;
+          placed++;
+        }
+      }
+
+      for (let r = 0; r < M_ROWS; r++) {
+        for (let c = 0; c < M_COLS; c++) {
+          if (!mineBoard[r][c].mine) {
+            let cnt = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < M_ROWS && nc >= 0 && nc < M_COLS && mineBoard[nr][nc].mine) cnt++;
+              }
+            }
+            mineBoard[r][c].count = cnt;
+          }
+        }
+      }
+    }
+
+    function clickMine(r, c) {
+      if (mineGameOver || mineBoard[r][c].revealed) return;
+      const cell = mineBoard[r][c];
+      cell.revealed = true;
+      const el = document.getElementById('mineGrid').children[r * M_COLS + c];
+
+      if (cell.mine) {
+        mineGameOver = true;
+        el.textContent = '💣';
+        el.style.backgroundColor = '#ef4444';
+        document.getElementById('mineFace').textContent = '😵';
+        return;
+      }
+      el.style.backgroundColor = '#d1d5db';
+      el.style.border = '1px solid #9ca3af';
+      if (cell.count > 0) {
+        el.textContent = cell.count;
+        el.style.color = ['#2563eb', '#16a34a', '#dc2626', '#7c3aed'][cell.count - 1] || '#000';
+      } else {
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < M_ROWS && nc >= 0 && nc < M_COLS && !mineBoard[nr][nc].revealed) {
+              clickMine(nr, nc);
+            }
+          }
+        }
+      }
+    }
+    resetMinesweeper();
+    window.resetMinesweeper = resetMinesweeper;
+
+    /* =====================================================================
+       10. MAIN 3D ANIMATION LOOP
+       ===================================================================== */
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      const time = clock.getElapsedTime();
+
+      if (cameraLerpProgress < 1) {
+        cameraLerpProgress += delta * 2.2;
+        const t = Math.min(cameraLerpProgress, 1);
+        const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+        camera.position.lerpVectors(camStartPos, camEndPos, easeT);
+        const currentTarget = new THREE.Vector3().lerpVectors(camStartTarget, camEndTarget, easeT);
+        camera.lookAt(currentTarget);
+      } else if (!isAtWorkstation) {
+        const targetX = CAM_ROOM_POS.x + (mouse.x * 0.28);
+        const targetY = CAM_ROOM_POS.y + (mouse.y * 0.18);
+        camera.position.x += (targetX - camera.position.x) * 0.05;
+        camera.position.y += (targetY - camera.position.y) * 0.05;
+        camera.lookAt(CAM_ROOM_TARGET);
+      }
+
+      const dPos = dustGeo.attributes.position.array;
+      for (let i = 0; i < dustCount; i++) {
+        dPos[i * 3 + 1] -= 0.0015;
+        dPos[i * 3] += Math.sin(time + i) * 0.0008;
+        if (dPos[i * 3 + 1] < 0.1) dPos[i * 3 + 1] = 1.9;
+      }
+      dustGeo.attributes.position.needsUpdate = true;
+
+      screenGlow.intensity = 1.1 + Math.sin(time * 6) * 0.08;
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+
+  <!-- Active-tab indicator for the dock + project detail window -->
+  <script>
+    document.querySelectorAll('.freud-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        document.querySelectorAll('.freud-tab').forEach(function (t) { t.classList.remove('is-active'); });
+        tab.classList.add('is-active');
+      });
+    });
+
+    // ---- profile identity card ----
+    function toggleProfileCard(e) {
+      if (e) e.stopPropagation();
+      document.getElementById('profileCard').classList.toggle('pp-open');
+    }
+    function closeProfileCard() {
+      document.getElementById('profileCard').classList.remove('pp-open');
+    }
+    document.addEventListener('click', function (e) {
+      const pc = document.getElementById('profileCard');
+      if (pc.classList.contains('pp-open') && !pc.contains(e.target) && e.target.closest('#profilePlate') === null) {
+        closeProfileCard();
+      }
+    });
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeProfileCard();
+    });
+    window.toggleProfileCard = toggleProfileCard;
+
+    // ---- guestbook beacon follows the 3D notebook prop (screen-space projection) ----
+    (function () {
+      const pill = document.getElementById('notebookPill');
+      if (!pill || typeof THREE === 'undefined') return;
+      const v = new THREE.Vector3();
+      let last = '';
+      function place() {
+        try {
+          if (typeof notebookGroup === 'undefined' || typeof camera === 'undefined') return;
+          notebookGroup.getWorldPosition(v);
+          v.project(camera);
+          const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+          const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+          const l = Math.round(x - pill.offsetWidth - 34);
+          const t = Math.round(y - pill.offsetHeight - 30);
+          // clamp inside the viewport so the beacon never gets cut off
+          const cl = Math.max(10, Math.min(l, window.innerWidth - pill.offsetWidth - 10));
+          const ct = Math.max(64, Math.min(t, window.innerHeight - pill.offsetHeight - 120));
+          const sig = cl + ',' + ct;
+          if (sig !== last) { last = sig; pill.style.left = cl + 'px'; pill.style.top = ct + 'px'; }
+        } catch (err) { /* scene not ready yet */ }
+      }
+      place();
+      window.addEventListener('resize', place);
+      (function loop() { place(); requestAnimationFrame(loop); })();
+    })();
+
+    // ---- taskbar start menu ----
+    function toggleOsMenu(e) {
+      if (e) e.stopPropagation();
+      document.getElementById('osStartMenu').classList.toggle('sm-open');
+    }
+    function closeOsMenu() {
+      document.getElementById('osStartMenu').classList.remove('sm-open');
+    }
+    document.addEventListener('click', function (e) {
+      const sm = document.getElementById('osStartMenu');
+      if (sm.classList.contains('sm-open') && !sm.contains(e.target) && e.target.closest('#btnOsStart') === null) {
+        sm.classList.remove('sm-open');
+      }
+    });
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeOsMenu();
+    });
+    window.toggleOsMenu = toggleOsMenu;
+    window.closeOsMenu = closeOsMenu;
+
+    // ---- project tiles: single click selects, OPEN button / double click launches ----
+    function selectProject(el) {
+      document.querySelectorAll('.project-grid-card').forEach(function (c) { c.classList.remove('selected'); });
+      el.classList.add('selected');
+    }
+    window.selectProject = selectProject;
+    document.querySelectorAll('.project-grid-card').forEach(function (card) {
+      if (card.querySelector('.proj-open-btn')) return;
+      const btn = document.createElement('button');
+      btn.className = 'proj-open-btn';
+      btn.type = 'button';
+      btn.textContent = 'OPEN ▸';
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openProjectDetail(card);
+      });
+      card.appendChild(btn);
+    });
+
+    function openProjectDetail(el) {
+      const d = el.dataset;
+      const pd = document.getElementById('projectDetail');
+      const shot = document.getElementById('pdShot');
+      const tint = (getComputedStyle(el).getPropertyValue('--tint') || '#D7AD49').trim();
+      const tb = document.getElementById('pdTitlebar');
+      tb.style.background = tint;
+      tb.style.color = tint.toUpperCase() === '#D7AD49' ? '#10151D' : '#EAE3D5';
+      document.getElementById('pdTitle').textContent = d.repo.toUpperCase() + '.EXE';
+      document.getElementById('pdName').innerHTML = d.title;
+      document.getElementById('pdDesc').textContent = d.desc;
+      document.getElementById('pdYear').textContent = d.year;
+      document.getElementById('pdCat').innerHTML = d.catLabel;
+      const tech = d.tech.split(',');
+      document.getElementById('pdCount').textContent = tech.length + ' STACKS';
+      document.getElementById('pdTech').innerHTML = tech.map(function (t) {
+        return '<span class="pd-chip">' + t.trim() + '</span>';
+      }).join('');
+      const st = document.getElementById('pdStatus');
+      st.className = 'status-led ' + d.status;
+      st.querySelector('span').textContent = d.status.toUpperCase();
+      shot.style.display = 'block';
+      shot.src = 'https://opengraph.githubassets.com/1/Alvirwebd/' + d.repo;
+      document.getElementById('pdGithub').href = 'https://github.com/Alvirwebd/' + d.repo;
+      const demo = document.getElementById('pdDemo');
+      if (d.demo) { demo.href = d.demo; demo.classList.remove('hidden'); }
+      else { demo.classList.add('hidden'); }
+      pd.classList.add('pd-open');
+      pd.dataset.repo = d.repo;
+    }
+    function closeProjectDetail() {
+      document.getElementById('projectDetail').classList.remove('pd-open');
+    }
+    function handleDetailBackdropClick(e) {
+      if (e.target.id === 'projectDetail') closeProjectDetail();
+    }
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && document.getElementById('projectDetail').classList.contains('pd-open')) {
+        closeProjectDetail();
+      }
+    });
+    window.openProjectDetail = openProjectDetail;
+    window.closeProjectDetail = closeProjectDetail;
+    window.handleDetailBackdropClick = handleDetailBackdropClick;
+  </script>
+</body>
+</html>
