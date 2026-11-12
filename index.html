@@ -4186,6 +4186,21 @@ Duration: 2022 – Present (6th Semester)<br><br>
     contactShadow(mousepad, 1.0, 0.26);
 
     // Dust Particles
+    function createDustParticleTexture() {
+      const size = 32;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = size;
+      const ctx = cv.getContext('2d');
+      const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.7)');
+      grad.addColorStop(0.7, 'rgba(255, 255, 255, 0.2)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+      return new THREE.CanvasTexture(cv);
+    }
+
     const dustCount = 75;
     const dustGeo = new THREE.BufferGeometry();
     const dustPositions = new Float32Array(dustCount * 3);
@@ -4195,7 +4210,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
       dustPositions[i * 3 + 2] = -0.2 + (Math.random() - 0.5) * 1.4;
     }
     dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
-    const dustParticles = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xffecc2, size: 0.025, transparent: true, opacity: 0.65 }));
+    const dustParticles = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+      color: 0xffecc2,
+      size: 0.025,
+      map: createDustParticleTexture(),
+      transparent: true,
+      opacity: 0.65,
+      depthWrite: false
+    }));
     scene.add(dustParticles);
 
     /* =====================================================================
@@ -6022,9 +6044,25 @@ Duration: 2022 – Present (6th Semester)<br><br>
     let activeAudioNodes = [];
 
     function startSynthChords() {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-      clearInterval(synthInterval);
+      if (!audioCtx) {
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+          return;
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        try {
+          const resumePromise = audioCtx.resume();
+          if (resumePromise && typeof resumePromise.catch === 'function') {
+            resumePromise.catch(() => {});
+          }
+        } catch (e) {}
+      }
+      if (synthInterval) {
+        clearInterval(synthInterval);
+        synthInterval = null;
+      }
       isSynthPlaying = true;
       updateVisualizerState();
       updateTrackSelectorUI();
@@ -6034,27 +6072,33 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
       synthInterval = setInterval(() => {
         if (!isSynthPlaying) return;
+        if (!audioCtx || audioCtx.state === 'closed') return;
         const cur = chordsList[chordIdx];
         chordIdx = (chordIdx + 1) % chordsList.length;
 
         cur.forEach(freq => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-          // Master music gain (+10% relative increase from 0.0216 to 0.02376)
-          gain.gain.setValueAtTime(0.02376, audioCtx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
+          try {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            // Master music gain (+10% relative increase from 0.0216 to 0.02376)
+            gain.gain.setValueAtTime(0.02376, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
 
-          activeAudioNodes.push(osc);
-          osc.onended = () => {
-            activeAudioNodes = activeAudioNodes.filter(n => n !== osc);
-          };
+            const voice = { osc, gain };
+            activeAudioNodes.push(voice);
+            osc.onended = () => {
+              try { osc.disconnect(); } catch (e) {}
+              try { gain.disconnect(); } catch (e) {}
+              activeAudioNodes = activeAudioNodes.filter(n => n !== voice);
+            };
 
-          osc.start();
-          osc.stop(audioCtx.currentTime + 1.8);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1.8);
+          } catch (e) {}
         });
       }, track.tempo);
     }
@@ -6065,10 +6109,32 @@ Duration: 2022 – Present (6th Semester)<br><br>
         clearInterval(synthInterval);
         synthInterval = null;
       }
-      for (const node of activeAudioNodes) {
-        try { node.stop(); node.disconnect(); } catch (e) {}
-      }
+      const nodesToCleanup = activeAudioNodes.slice();
       activeAudioNodes = [];
+      for (const item of nodesToCleanup) {
+        if (!item) continue;
+        const osc = item.osc || (typeof item.stop === 'function' ? item : null);
+        const gain = item.gain && typeof item.gain.disconnect === 'function'
+          ? item.gain
+          : (typeof item.disconnect === 'function' && !item.stop ? item : null);
+
+        if (osc) {
+          try {
+            osc.onended = null;
+          } catch (e) {}
+          try {
+            osc.stop();
+          } catch (e) {}
+          try {
+            osc.disconnect();
+          } catch (e) {}
+        }
+        if (gain) {
+          try {
+            gain.disconnect();
+          } catch (e) {}
+        }
+      }
       stopVisualizerAnimation();
     }
 
@@ -6086,9 +6152,16 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
     // Best-effort page lifecycle audio cleanup (handles tab switch, backgrounding, dismiss, navigation, and BFCache freeze)
     function cleanupAudioLifecycle() {
-      stopMusicPlayback();
+      try {
+        stopMusicPlayback();
+      } catch (e) {}
       if (audioCtx && audioCtx.state !== 'closed') {
-        try { audioCtx.suspend().catch(() => {}); } catch (e) {}
+        try {
+          const suspendPromise = audioCtx.suspend();
+          if (suspendPromise && typeof suspendPromise.catch === 'function') {
+            suspendPromise.catch(() => {});
+          }
+        } catch (e) {}
       }
     }
     window.addEventListener('pagehide', cleanupAudioLifecycle);
@@ -6156,6 +6229,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
     document.getElementById('btnAudioToggle').addEventListener('click', toggleMusicPlayback);
     window.toggleMusicPlayback = toggleMusicPlayback;
     window.stopMusicPlayback = stopMusicPlayback;
+    window.startSynthChords = startSynthChords;
+    window.stopSynthChords = stopSynthChords;
+    window.cleanupAudioLifecycle = cleanupAudioLifecycle;
+    Object.defineProperty(window, 'activeAudioNodes', {
+      get: () => activeAudioNodes,
+      set: (v) => { activeAudioNodes = v; }
+    });
 
     /* =====================================================================
        8. TERMINAL CLI ENGINE
