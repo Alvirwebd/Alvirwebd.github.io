@@ -2101,7 +2101,7 @@
   </aside>
   <script>
     try {
-      if (localStorage.getItem('alvir_welcome_dismissed') !== 'true') {
+      if (sessionStorage.getItem('alvir_welcome_dismissed') !== 'true') {
         document.getElementById('welcomeCard').style.display = '';
       } else {
         document.getElementById('welcomeCard').dataset.dismissed = 'true';
@@ -4076,7 +4076,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         const _wc = document.getElementById('welcomeCard');
         if (_wc) {
           let isDismissed = _wc.dataset.dismissed === 'true';
-          try { isDismissed = isDismissed || localStorage.getItem('alvir_welcome_dismissed') === 'true'; } catch (err) {}
+          try { isDismissed = isDismissed || sessionStorage.getItem('alvir_welcome_dismissed') === 'true'; } catch (err) {}
           if (!isDismissed) {
             _wc.style.opacity = '1';
             _wc.style.pointerEvents = 'auto';
@@ -4266,7 +4266,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         }, 320);
       }
       try {
-        localStorage.setItem('alvir_welcome_dismissed', 'true');
+        sessionStorage.setItem('alvir_welcome_dismissed', 'true');
       } catch (e) {}
     }
 
@@ -4274,7 +4274,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const card = document.getElementById('welcomeCard');
       if (!card) return;
       try {
-        if (localStorage.getItem('alvir_welcome_dismissed') === 'true') {
+        if (sessionStorage.getItem('alvir_welcome_dismissed') === 'true') {
           card.dataset.dismissed = 'true';
           card.style.display = 'none';
           card.setAttribute('inert', '');
