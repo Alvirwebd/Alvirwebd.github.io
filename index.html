@@ -1850,6 +1850,11 @@
       .crt-screen > .grid { grid-template-columns: repeat(8, minmax(0, 1fr)) !important; }
       .desktop-icon > span:first-child { font-size: 18px !important; }
       .notebook-book .book-scroll { padding-top: 10px !important; }
+      #mineGrid > button {
+        width: 20px !important;
+        height: 20px !important;
+      }
+      #winMinesweeper .p-2 { padding: 4px !important; }
     }
 
     /* tablets — keep the desktop composition but never exceed the viewport */
@@ -1863,7 +1868,7 @@
     }
 
     /* ---- form fields: 16px minimum stops iOS Safari from zooming on focus ---- */
-    @media (max-width: 767px) {
+    @media (max-width: 767px), (max-height: 600px) {
       input,
       textarea,
       select {
@@ -1878,6 +1883,62 @@
       #contactModal button[onclick*="closeContactModal"] {
         min-width: 36px;
         min-height: 36px;
+      }
+    }
+
+    /* ---- touch target hit-area expansions on coarse-pointer devices ---- */
+    @media (pointer: coarse) {
+      .retro-titlebar .win-controls {
+        gap: 6px !important;
+      }
+      .win-ctl {
+        position: relative;
+      }
+      .win-ctl-min::after {
+        content: "";
+        position: absolute;
+        top: -6px;
+        bottom: -6px;
+        left: -8px;
+        right: -2px;
+      }
+      .win-ctl-close::after {
+        content: "";
+        position: absolute;
+        top: -6px;
+        bottom: -6px;
+        left: -2px;
+        right: -8px;
+      }
+      .welcome-close-btn {
+        position: relative;
+      }
+      .welcome-close-btn::after {
+        content: "";
+        position: absolute;
+        inset: -8px;
+      }
+      .welcome-dismiss-btn {
+        position: relative;
+      }
+      .welcome-dismiss-btn::after {
+        content: "";
+        position: absolute;
+        top: -8px;
+        bottom: -8px;
+        left: -6px;
+        right: -6px;
+      }
+      .notebook-book .book-scroll button[onclick*="selectStickyColor"] {
+        position: relative;
+      }
+      .notebook-book .book-scroll button[onclick*="selectStickyColor"]::after {
+        content: "";
+        position: absolute;
+        top: -8px;
+        bottom: -8px;
+        left: -2px;
+        right: -2px;
       }
     }
 
@@ -1944,7 +2005,7 @@
     }
     @media (max-width: 767px) and (min-height: 601px) {
       .welcome-card {
-        top: calc(var(--safe-t) + 58px);
+        top: calc(var(--safe-t) + 64px);
         right: calc(var(--safe-r) + 12px);
         left: calc(var(--safe-l) + 12px);
         max-width: min(340px, calc(100vw - var(--safe-l) - var(--safe-r) - 24px));
@@ -2079,7 +2140,7 @@
           <span class="font-mono text-[9px] font-semibold text-[#D7AD49] tracking-widest uppercase">VISITOR TERMINAL</span>
         </div>
         <button type="button" onclick="dismissWelcomeCard()" aria-label="Dismiss welcome card"
-                class="w-5 h-5 rounded-[2px] text-[#EAE3D5]/50 hover:text-[#EAE3D5] hover:bg-white/10 flex items-center justify-center text-xs transition cursor-pointer">
+                class="welcome-close-btn w-5 h-5 rounded-[2px] text-[#EAE3D5]/50 hover:text-[#EAE3D5] hover:bg-white/10 flex items-center justify-center text-xs transition cursor-pointer">
           ✕
         </button>
       </div>
@@ -2099,7 +2160,7 @@
           <span>FEATURED PROJECTS</span> <span class="text-[9px]">★</span>
         </button>
         <button type="button" onclick="dismissWelcomeCard()"
-                class="text-[9px] font-mono text-[#EAE3D5]/75 hover:text-[#EAE3D5]/90 transition cursor-pointer">
+                class="welcome-dismiss-btn text-[9px] font-mono text-[#EAE3D5]/75 hover:text-[#EAE3D5]/90 transition cursor-pointer">
           Dismiss
         </button>
       </div>
@@ -2807,9 +2868,9 @@
             </div>
           </div>
           <div class="p-3 bg-white retro-inward-box m-1 font-mono text-xs text-slate-800 leading-relaxed max-h-[420px] overflow-y-auto">
-============================================================<br>
+============================<br>
 ACADEMIC HISTORY & HIGHER EDUCATION<br>
-============================================================<br><br>
+============================<br><br>
 [INSTITUTION]<br>
 International Islamic University Chittagong (IIUC)<br>
 Department of Computer Science & Engineering<br><br>
@@ -2950,7 +3011,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
             <div class="border-t border-slate-700 pt-2 text-[11px] text-slate-300">
               <label class="block font-sans font-bold text-amber-300 mb-1">🎧 Play Your Own Audio File:</label>
               <div class="flex items-center gap-2">
-                <input type="file" id="customAudioInput" accept="audio/*" class="text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" />
+                <input type="file" id="customAudioInput" accept="audio/*" class="max-w-full overflow-hidden text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer" />
               </div>
               <div class="text-[10px] text-slate-400 mt-1">Select any .mp3 from your phone or PC!</div>
             </div>
@@ -3038,7 +3099,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
   <!-- =========================================================================
        SPIRAL NOTEBOOK OVERLAY MODAL (CUTE & INTERACTIVE THOUGHT JOURNAL)
        ========================================================================= -->
-  <div id="notebookOverlay">
+  <div id="notebookOverlay" onclick="handleNotebookBackdropClick(event)">
     <div class="notebook-book">
       <!-- Spiral Binding Rings -->
       <div class="spiral-binding">
@@ -3181,7 +3242,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
   <!-- =========================================================================
        CUTE CONTACT POPUP MODAL (WITH INVISIBLE / CLICK TO REVEAL EMAIL)
        ========================================================================= -->
-  <div id="contactModal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+  <div id="contactModal" onclick="handleContactBackdropClick(event)" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300">
     <div class="w-full max-w-md bg-[#171C23] border border-[#EAE3D5]/30 rounded-[3px] shadow-[6px_6px_0_rgba(0,0,0,0.6)] text-center relative overflow-hidden">
       <!-- titlebar -->
       <div class="h-8 flex items-center gap-2 px-3 bg-[#D7AD49] border-b-[1.5px] border-[#10151D]">
@@ -4490,6 +4551,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
       isNotebookOpen = false;
       document.getElementById('notebookOverlay').classList.remove('open-notebook');
     }
+    function handleNotebookBackdropClick(e) {
+      if (e.target.id === 'notebookOverlay') {
+        closeNotebook();
+      }
+    }
     function showNotePage(page) {
       currentNotePage = page;
       document.getElementById('notePage1').style.display = page === 1 ? 'block' : 'none';
@@ -4504,6 +4570,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
     window.openNotebook = openNotebook;
     window.closeNotebook = closeNotebook;
+    window.handleNotebookBackdropClick = handleNotebookBackdropClick;
     window.nextNotePage = nextNotePage;
     window.prevNotePage = prevNotePage;
     window.saveVisitorNote = saveVisitorNote;
@@ -4544,12 +4611,18 @@ Duration: 2022 – Present (6th Semester)<br><br>
       isContactOpen = false;
       document.getElementById('contactModal').classList.add('opacity-0', 'pointer-events-none');
     }
+    function handleContactBackdropClick(e) {
+      if (e.target.id === 'contactModal') {
+        closeContactModal();
+      }
+    }
 
     window.revealEmailAddress = revealEmailAddress;
     window.revealEmailInModal = revealEmailInModal;
     window.copyEmailToClipboard = copyEmailToClipboard;
     window.openContactModal = openContactModal;
     window.closeContactModal = closeContactModal;
+    window.handleContactBackdropClick = handleContactBackdropClick;
 
     /* =====================================================================
        6. ALVIROS WINDOWS & DRAGGING
