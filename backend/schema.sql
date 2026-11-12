@@ -11,15 +11,22 @@ CREATE TABLE IF NOT EXISTS guestbook_thoughts (
 
 CREATE INDEX IF NOT EXISTS idx_thoughts_token_hash ON guestbook_thoughts(token_hash);
 
--- Persistent IP Rate Limiting (5 submissions per 10 minutes)
+-- Persistent IP Rate Limiting for visitor submissions (5 per 10 minutes)
 CREATE TABLE IF NOT EXISTS rate_limits (
   ip_hash TEXT PRIMARY KEY,
   count INTEGER NOT NULL DEFAULT 1,
   reset_at INTEGER NOT NULL
 );
 
--- Short-lived authenticated owner sessions
+-- Brute-Force Rate Limiting for owner authentication (5 failed attempts per 15 minutes)
+CREATE TABLE IF NOT EXISTS owner_login_attempts (
+  ip_hash TEXT PRIMARY KEY,
+  attempts INTEGER NOT NULL DEFAULT 1,
+  locked_until INTEGER NOT NULL DEFAULT 0
+);
+
+-- Short-lived authenticated owner sessions (Stored as SHA-256 hashes only)
 CREATE TABLE IF NOT EXISTS owner_sessions (
-  session_id TEXT PRIMARY KEY,
+  session_hash TEXT PRIMARY KEY,
   expires_at INTEGER NOT NULL
 );

@@ -4734,9 +4734,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
     const totalNotePages = 3;
     let selectedStickyColor = 'yellow';
 
-    // Backend endpoint: Cloudflare Worker
+    // Configured guestbook API endpoint. Must be explicitly set to the deployed Cloudflare Worker URL.
+    // For local development or production, define window.ALVIROS_GUESTBOOK_ENDPOINT before loading,
+    // or set CONFIGURED_GUESTBOOK_ENDPOINT below.
+    const CONFIGURED_GUESTBOOK_ENDPOINT = '';
+
     function getGuestbookEndpoint() {
-      return window.GUESTBOOK_API_ENDPOINT || 'https://alviros-guestbook.workers.dev';
+      return (typeof window !== 'undefined' && window.ALVIROS_GUESTBOOK_ENDPOINT) || CONFIGURED_GUESTBOOK_ENDPOINT || '';
     }
 
     function escapeHtml(str) {
@@ -4749,57 +4753,115 @@ Duration: 2022 – Present (6th Semester)<br><br>
         .replace(/'/g, '&#039;');
     }
 
+    // Secure token collection management: supports multiple private thoughts per visitor
+    function getVisitorTokens() {
+      try {
+        const legacy = localStorage.getItem('alvir_guestbook_token');
+        let tokens = JSON.parse(localStorage.getItem('alvir_guestbook_tokens') || '[]');
+        if (!Array.isArray(tokens)) tokens = [];
+        if (legacy && typeof legacy === 'string' && !tokens.includes(legacy)) {
+          tokens.unshift(legacy);
+          localStorage.setItem('alvir_guestbook_tokens', JSON.stringify(tokens));
+        }
+        return tokens;
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveVisitorToken(newToken) {
+      if (!newToken || typeof newToken !== 'string') return;
+      try {
+        const tokens = getVisitorTokens();
+        if (!tokens.includes(newToken)) {
+          tokens.unshift(newToken);
+          localStorage.setItem('alvir_guestbook_tokens', JSON.stringify(tokens));
+        }
+        localStorage.setItem('alvir_guestbook_token', newToken); // Keep latest for backward-compat
+      } catch (e) {}
+    }
+
     async function loadVisitorOwnThought() {
       const container = document.getElementById('visitorOwnThoughtContainer');
       if (!container) return;
-      const token = localStorage.getItem('alvir_guestbook_token');
-      if (!token) {
+
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) {
         container.innerHTML = `
           <div class="p-3 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-xs font-sans text-[#44372E]/70 leading-relaxed">
-            🔒 <strong>Private Guestbook:</strong> Thoughts left here are visible only to you on this device and Alvir. No public feed, no tracking. Pin a note above to see it here!
+            🔒 <strong>Guestbook Backend Not Configured:</strong> The private guestbook requires a deployed Cloudflare Worker backend. To connect, set <code>window.ALVIROS_GUESTBOOK_ENDPOINT</code> or configure the endpoint in <code>index.html</code>.
+          </div>
+        `;
+        return;
+      }
+
+      const tokens = getVisitorTokens();
+      if (tokens.length === 0) {
+        container.innerHTML = `
+          <div class="p-3 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-xs font-sans text-[#44372E]/70 leading-relaxed">
+            🔒 <strong>Private Guestbook:</strong> Thoughts left here are visible only to you on this device and Alvir. No public feed, no tracking. Pin your notes above to see them here!
           </div>
         `;
         return;
       }
 
       try {
-        const res = await fetch(`${getGuestbookEndpoint()}/api/thoughts/my`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+        const res = await fetch(`${endpoint}/api/thoughts/my`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokens })
         });
-        if (res.status === 404) {
-          localStorage.removeItem('alvir_guestbook_token');
-          loadVisitorOwnThought();
-          return;
-        }
+
         if (!res.ok) {
-          container.innerHTML = `<div class="text-xs text-amber-800 font-sans italic">Unable to load your saved thought at this moment.</div>`;
+          container.innerHTML = `<div class="text-xs text-amber-800 font-sans italic p-2 bg-[#FFFDF6] rounded">Unable to load your saved thoughts at this moment.</div>`;
           return;
         }
+
         const data = await res.json();
-        const thought = data.thought || data;
-        const colorStyles = {
-          yellow: 'bg-yellow-100/90 border-amber-300 text-slate-800',
-          peach: 'bg-rose-100/90 border-rose-300 text-slate-800',
-          mint: 'bg-emerald-100/90 border-emerald-300 text-slate-800',
-          sky: 'bg-sky-100/90 border-sky-300 text-slate-800'
-        }[thought.color || 'yellow'] || 'bg-yellow-100/90 border-amber-300 text-slate-800';
+        const thoughts = Array.isArray(data.thoughts) ? data.thoughts : [];
 
-        const formattedDate = new Date(thought.created_at).toLocaleDateString(undefined, {
-          month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
-        });
+        if (thoughts.length === 0) {
+          container.innerHTML = `
+            <div class="p-3 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-xs font-sans text-[#44372E]/70 leading-relaxed">
+              No private notes found for this device. Pin a thought above to etch it into the desk!
+            </div>
+          `;
+          return;
+        }
 
-        container.innerHTML = `
-          <div class="note-sticky p-3 pt-3.5 border ${colorStyles}">
+        container.innerHTML = '';
+        thoughts.forEach((t) => {
+          const colorStyles = {
+            yellow: 'bg-yellow-100/90 border-amber-300 text-slate-800',
+            peach: 'bg-rose-100/90 border-rose-300 text-slate-800',
+            mint: 'bg-emerald-100/90 border-emerald-300 text-slate-800',
+            sky: 'bg-sky-100/90 border-sky-300 text-slate-800'
+          }[t.color || 'yellow'] || 'bg-yellow-100/90 border-amber-300 text-slate-800';
+
+          const formattedDate = new Date(t.created_at).toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+
+          const item = document.createElement('div');
+          item.className = `note-sticky p-3 pt-3.5 border ${colorStyles}`;
+          item.innerHTML = `
             <span class="note-pin"></span>
-            <div class="font-hand text-xl text-slate-900 leading-snug">"${escapeHtml(thought.text)}"</div>
+            <div class="font-hand text-xl text-slate-900 leading-snug">"${escapeHtml(t.text)}"</div>
             <div class="text-[11px] font-sans text-slate-600 mt-2 font-semibold flex items-center justify-between">
-              <span>— <span class="text-slate-900 font-bold">${escapeHtml(thought.nickname || 'Anonymous')}</span></span>
+              <span>— <span class="text-slate-900 font-bold">${escapeHtml(t.nickname || 'Anonymous')}</span></span>
               <span class="text-[10px] text-slate-500 font-mono">${formattedDate} (Private)</span>
             </div>
-          </div>
-        `;
+          `;
+          container.appendChild(item);
+        });
+
+        const footnote = document.createElement('div');
+        footnote.className = 'text-[9.5px] text-[#44372E]/50 font-mono pt-1 text-center';
+        footnote.textContent = '🔒 Notes are privately keyed to unguessable tokens stored in this browser\'s local storage.';
+        container.appendChild(footnote);
+
       } catch (e) {
-        container.innerHTML = `<div class="text-xs text-[#44372E]/60 italic font-sans">Your pinned thought is securely stored on Alvir's server. Connect to network to view it.</div>`;
+        container.innerHTML = `<div class="text-xs text-[#44372E]/60 italic font-sans p-2 bg-[#FFFDF6] rounded">Your pinned thoughts are securely stored on Alvir's server. Connect to network to view them.</div>`;
       }
     }
 
@@ -4814,6 +4876,15 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
       if (errorEl) { errorEl.classList.add('hidden'); errorEl.textContent = ''; }
       if (successEl) successEl.classList.add('hidden');
+
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) {
+        if (errorEl) {
+          errorEl.textContent = '⚠️ Guestbook service is not configured. Please set ALVIROS_GUESTBOOK_ENDPOINT to your deployed Cloudflare Worker URL. Your text has been preserved in the editor.';
+          errorEl.classList.remove('hidden');
+        }
+        return;
+      }
 
       if (!txt) {
         if (errorEl) {
@@ -4830,7 +4901,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
 
       try {
-        const res = await fetch(`${getGuestbookEndpoint()}/api/thoughts`, {
+        const res = await fetch(`${endpoint}/api/thoughts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -4856,7 +4927,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         }
 
         if (data && data.token) {
-          localStorage.setItem('alvir_guestbook_token', data.token);
+          saveVisitorToken(data.token);
           if (noteEl) noteEl.value = '';
           if (successEl) {
             successEl.textContent = '✓ Your thought is securely pinned in Alvir\'s private guestbook!';
@@ -4916,6 +4987,16 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const key = inp ? inp.value.trim() : '';
 
       if (err) { err.textContent = ''; err.classList.add('hidden'); }
+
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) {
+        if (err) {
+          err.textContent = 'Guestbook service is not configured. Set ALVIROS_GUESTBOOK_ENDPOINT.';
+          err.classList.remove('hidden');
+        }
+        return;
+      }
+
       if (!key) {
         if (err) { err.textContent = 'Please enter the admin key.'; err.classList.remove('hidden'); }
         return;
@@ -4924,7 +5005,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (btn) { btn.disabled = true; btn.textContent = 'Verifying...'; }
 
       try {
-        const res = await fetch(`${getGuestbookEndpoint()}/api/owner/login`, {
+        const res = await fetch(`${endpoint}/api/owner/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key })
@@ -4968,8 +5049,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
       container.classList.remove('hidden');
 
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) return;
+
       try {
-        const res = await fetch(`${getGuestbookEndpoint()}/api/owner/thoughts`, {
+        const res = await fetch(`${endpoint}/api/owner/thoughts`, {
           headers: { 'Authorization': `Bearer ${session}` }
         });
 
@@ -5024,8 +5108,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const session = sessionStorage.getItem('alvir_owner_session');
       if (!session) return;
 
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) return;
+
       try {
-        const res = await fetch(`${getGuestbookEndpoint()}/api/owner/thoughts/${id}`, {
+        const res = await fetch(`${endpoint}/api/owner/thoughts/${id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${session}` }
         });
@@ -5042,9 +5129,10 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
     async function ownerLogout() {
       const session = sessionStorage.getItem('alvir_owner_session');
-      if (session) {
+      const endpoint = getGuestbookEndpoint();
+      if (session && endpoint) {
         try {
-          await fetch(`${getGuestbookEndpoint()}/api/owner/logout`, {
+          await fetch(`${endpoint}/api/owner/logout`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${session}` }
           });
@@ -5979,7 +6067,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.addEventListener('keydown', attemptMusicAutoStart, { once: true });
     window.addEventListener('touchstart', attemptMusicAutoStart, { once: true });
 
-    // Page lifecycle audio cleanup: stop and suspend audio when tab/window is unloaded or closed
+    // Best-effort page lifecycle audio cleanup (handles tab close, reload, navigation, and bfcache freeze)
     function cleanupAudioLifecycle() {
       stopMusicPlayback();
       if (audioCtx && audioCtx.state !== 'closed') {
@@ -5988,6 +6076,15 @@ Duration: 2022 – Present (6th Semester)<br><br>
     }
     window.addEventListener('pagehide', cleanupAudioLifecycle);
     window.addEventListener('beforeunload', cleanupAudioLifecycle);
+
+    // Resuming state when restored from back-forward cache (bfcache)
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted && isAudioActive()) {
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+      }
+    });
 
     let vizBars = null;
     function getVizBars() {
