@@ -1,395 +1,679 @@
 /**
- * AlvirOS Guestbook Automated Test Suite
- * Tests all backend security, rate-limiting, token-hashing, and multi-session requirements.
- *
- * Usage: node backend/test.js
+ * AlvirOS Guestbook Test Suite
+ * 
+ * Includes:
+ * 1. REAL SQLite / D1 Integration Tests (executes actual schema.sql and worker against native SQLite engine)
+ * 2. MockD1 Unit Verification Tests (for headless environments without native SQLite)
  */
 
-const worker = require('./worker.js').default;
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import worker from './worker.js';
 
-class MockD1 {
-  constructor() {
-    this.thoughts = [];
-    this.rateLimits = new Map();
-    this.ownerAttempts = new Map();
-    this.sessions = new Map();
-    this.nextId = 1;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Helper for assertions
+let totalPassed = 0;
+let totalFailed = 0;
+
+function assert(condition, message) {
+  if (condition) {
+    console.log(`  PASS: ${message}`);
+    totalPassed++;
+  } else {
+    console.error(`  FAIL: ${message}`);
+    totalFailed++;
+    throw new Error(`Assertion failed: ${message}`);
+  }
+}
+
+// ============================================================================
+// PART 1: REAL SQLite / D1 INTEGRATION TEST HARNESS
+// ============================================================================
+
+let hasNativeSqlite = false;
+let DatabaseSyncClass = null;
+
+try {
+  const sqliteModule = await import('node:sqlite');
+  DatabaseSyncClass = sqliteModule.DatabaseSync;
+  hasNativeSqlite = true;
+} catch (e) {
+  console.warn('Native node:sqlite not available. Integration tests will be skipped.');
+}
+
+class RealSQLiteD1Database {
+  constructor(schemaSql) {
+    this.sqlite = new DatabaseSyncClass(':memory:');
+    if (schemaSql) {
+      this.sqlite.exec(schemaSql);
+    }
   }
 
-  prepare(query) {
-    const self = this;
-    const makeExec = (args = []) => ({
-      async run() {
-        if (query.includes('INSERT INTO guestbook_thoughts')) {
-          const id = self.nextId++;
-          self.thoughts.push({
-            id,
-            token_hash: args[0],
-            text: args[1],
-            nickname: args[2],
-            color: args[3],
-            created_at: new Date().toISOString()
-          });
-          return { meta: { last_row_id: id } };
-        }
-        if (query.includes('INSERT INTO owner_sessions')) {
-          self.sessions.set(args[0], args[1]); // session_hash -> expires_at
-          return { success: true };
-        }
-        if (query.includes('DELETE FROM owner_sessions WHERE session_hash')) {
-          self.sessions.delete(args[0]);
-          return { success: true };
-        }
-        if (query.includes('DELETE FROM guestbook_thoughts WHERE id')) {
-          self.thoughts = self.thoughts.filter(t => t.id !== args[0]);
-          return { success: true };
-        }
-        if (query.includes('DELETE FROM owner_login_attempts WHERE ip_hash')) {
-          self.ownerAttempts.delete(args[0]);
-          return { success: true };
-        }
-        if (query.includes('INSERT INTO owner_login_attempts')) {
-          const ipHash = args[0];
-          const now = args[1];
-          const lockUntil = args[2];
-          const existing = self.ownerAttempts.get(ipHash);
-          if (!existing) {
-            self.ownerAttempts.set(ipHash, { attempts: 1, locked_until: 0 });
-          } else {
-            const attempts = (existing.locked_until < now && existing.locked_until > 0) ? 1 : existing.attempts + 1;
-            const newLock = attempts >= 5 ? lockUntil : 0;
-            self.ownerAttempts.set(ipHash, { attempts, locked_until: newLock });
-          }
-          return { success: true };
-        }
-        return { success: true };
-      },
+  prepare(sql) {
+    return new RealD1PreparedStatement(this.sqlite, sql);
+  }
 
-      async first() {
-        if (query.includes('FROM guestbook_thoughts WHERE token_hash = ?')) {
-          return self.thoughts.find(t => t.token_hash === args[0]) || null;
-        }
-        if (query.includes('FROM owner_sessions WHERE session_hash = ?')) {
-          const exp = self.sessions.get(args[0]);
-          const now = Math.floor(Date.now() / 1000);
-          if (exp && exp > now) return { session_hash: args[0], expires_at: exp };
-          return null;
-        }
-        if (query.includes('FROM owner_login_attempts WHERE ip_hash = ?')) {
-          return self.ownerAttempts.get(args[0]) || null;
-        }
-        // Atomic visitor rate-limit upsert
-        if (query.includes('INSERT INTO rate_limits')) {
-          const ipHash = args[0];
-          const resetAt = args[1];
-          const now = args[2];
-          const existing = self.rateLimits.get(ipHash);
-          if (!existing || existing.reset_at < now) {
-            const entry = { count: 1, reset_at: resetAt };
-            self.rateLimits.set(ipHash, entry);
-            return entry;
-          } else {
-            existing.count += 1;
-            return existing;
-          }
-        }
-        return null;
-      },
-
-      async all() {
-        if (query.includes('FROM guestbook_thoughts WHERE token_hash IN')) {
-          const matched = self.thoughts.filter(t => args.includes(t.token_hash));
-          return { results: [...matched].reverse() };
-        }
-        if (query.includes('FROM guestbook_thoughts ORDER BY id DESC')) {
-          return { results: [...self.thoughts].reverse() };
-        }
-        return { results: [] };
+  async batch(statements) {
+    this.sqlite.exec('BEGIN TRANSACTION;');
+    try {
+      const results = [];
+      for (const stmt of statements) {
+        results.push(await stmt.run());
       }
-    });
+      this.sqlite.exec('COMMIT;');
+      return results;
+    } catch (err) {
+      this.sqlite.exec('ROLLBACK;');
+      throw err;
+    }
+  }
 
-    const exec = makeExec([]);
+  async exec(sql) {
+    this.sqlite.exec(sql);
+  }
+}
+
+class RealD1PreparedStatement {
+  constructor(sqlite, sql, params = []) {
+    this.sqlite = sqlite;
+    this.sql = sql;
+    this.params = params;
+  }
+
+  bind(...params) {
+    return new RealD1PreparedStatement(this.sqlite, this.sql, params);
+  }
+
+  async first() {
+    const stmt = this.sqlite.prepare(this.sql);
+    const row = stmt.get(...this.params);
+    return row !== undefined ? row : null;
+  }
+
+  async all() {
+    const stmt = this.sqlite.prepare(this.sql);
+    const rows = stmt.all(...this.params);
+    return { results: rows || [], success: true };
+  }
+
+  async run() {
+    const stmt = this.sqlite.prepare(this.sql);
+    const info = stmt.run(...this.params);
     return {
-      ...exec,
-      bind(...args) {
-        return makeExec(args);
+      success: true,
+      meta: {
+        changes: info ? info.changes : 0,
+        last_row_id: info ? Number(info.lastInsertRowid) : null
       }
     };
   }
 }
 
-async function runTests() {
-  const db = new MockD1();
+// ============================================================================
+// PART 2: MOCK D1 DATABASE (For lightweight unit testing)
+// ============================================================================
+
+class MockD1Database {
+  constructor() {
+    this.thoughts = [];
+    this.sessions = new Map();
+    this.loginAttempts = new Map();
+    this.rateLimits = new Map();
+    this.nextId = 1;
+  }
+
+  prepare(sql) {
+    return new MockPreparedStatement(this, sql);
+  }
+}
+
+class MockPreparedStatement {
+  constructor(db, sql, params = []) {
+    this.db = db;
+    this.sql = sql;
+    this.params = params;
+  }
+
+  bind(...params) {
+    return new MockPreparedStatement(this.db, this.sql, params);
+  }
+
+  async run() {
+    const sql = this.sql.trim();
+    if (sql.startsWith('INSERT INTO guestbook_thoughts')) {
+      const [tokenHash, text, nickname, color] = this.params;
+      const id = this.db.nextId++;
+      this.db.thoughts.push({ id, token_hash: tokenHash, text, nickname, color, created_at: new Date().toISOString() });
+      return { success: true, meta: { last_row_id: id, changes: 1 } };
+    }
+    if (sql.startsWith('INSERT INTO owner_sessions')) {
+      const [sessionHash, expiresAt] = this.params;
+      this.db.sessions.set(sessionHash, { session_hash: sessionHash, expires_at: expiresAt });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.startsWith('DELETE FROM owner_sessions')) {
+      const [sessionHash] = this.params;
+      this.db.sessions.delete(sessionHash);
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.startsWith('DELETE FROM guestbook_thoughts')) {
+      const [id] = this.params;
+      this.db.thoughts = this.db.thoughts.filter(t => t.id !== id);
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (sql.startsWith('DELETE FROM owner_login_attempts')) {
+      const [ipHash] = this.params;
+      this.db.loginAttempts.delete(ipHash);
+      return { success: true, meta: { changes: 1 } };
+    }
+    return { success: true, meta: { changes: 0 } };
+  }
+
+  async first() {
+    const sql = this.sql.trim();
+    if (sql.includes('FROM rate_limits') || sql.startsWith('INSERT INTO rate_limits')) {
+      const [ipHash, resetAt, now1, now2, newResetAt] = this.params;
+      const now = now1;
+      let rec = this.db.rateLimits.get(ipHash);
+      if (!rec || rec.reset_at < now) {
+        rec = { count: 1, reset_at: resetAt };
+      } else {
+        rec.count += 1;
+      }
+      this.db.rateLimits.set(ipHash, rec);
+      return { count: rec.count, reset_at: rec.reset_at };
+    }
+    if (sql.startsWith('INSERT INTO owner_login_attempts')) {
+      const [ipHash, now1, now2, now3, now4, lockedUntilVal] = this.params;
+      const now = now1;
+      let rec = this.db.loginAttempts.get(ipHash);
+      if (!rec) {
+        rec = { attempts: 1, locked_until: 0 };
+      } else if (rec.locked_until > 0 && rec.locked_until <= now) {
+        rec = { attempts: 1, locked_until: 0 };
+      } else if (rec.locked_until > now) {
+        // already locked
+      } else {
+        rec.attempts += 1;
+        if (rec.attempts >= 5) {
+          rec.locked_until = lockedUntilVal;
+        }
+      }
+      this.db.loginAttempts.set(ipHash, rec);
+      return { attempts: rec.attempts, locked_until: rec.locked_until };
+    }
+    if (sql.startsWith('SELECT attempts, locked_until FROM owner_login_attempts')) {
+      const [ipHash] = this.params;
+      return this.db.loginAttempts.get(ipHash) || null;
+    }
+    if (sql.startsWith('SELECT session_hash FROM owner_sessions')) {
+      const [sessionHash, now] = this.params;
+      const rec = this.db.sessions.get(sessionHash);
+      if (rec && rec.expires_at > now) return rec;
+      return null;
+    }
+    if (sql.startsWith('SELECT id, text, nickname, color, created_at FROM guestbook_thoughts WHERE token_hash = ?')) {
+      const [tokenHash] = this.params;
+      return this.db.thoughts.find(t => t.token_hash === tokenHash) || null;
+    }
+    return null;
+  }
+
+  async all() {
+    const sql = this.sql.trim();
+    if (sql.includes('WHERE token_hash IN')) {
+      const hashes = this.params;
+      const matched = this.db.thoughts.filter(t => hashes.includes(t.token_hash));
+      return { results: matched, success: true };
+    }
+    if (sql.startsWith('SELECT id, text, nickname, color, created_at FROM guestbook_thoughts ORDER BY id DESC')) {
+      return { results: [...this.db.thoughts].reverse(), success: true };
+    }
+    return { results: [], success: true };
+  }
+}
+
+// ============================================================================
+// TEST SUITE EXECUTION
+// ============================================================================
+
+async function runRealIntegrationTests() {
+  console.log('\n======================================================');
+  console.log('SUITE 1: REAL SQLITE / D1 INTEGRATION TESTS');
+  console.log('Executes actual backend/schema.sql & native SQLite queries');
+  console.log('======================================================\n');
+
+  const schemaPath = path.join(__dirname, 'schema.sql');
+  const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+  const realDb = new RealSQLiteD1Database(schemaSql);
+
   const env = {
-    DB: db,
-    ADMIN_KEY: 'test-admin-secret-key-xyz-2026',
+    DB: realDb,
+    ADMIN_KEY: 'correct_owner_secret_password_12345',
     ALLOWED_ORIGIN: '*'
   };
 
-  let passed = 0;
-  let total = 0;
-
-  function assert(condition, message) {
-    total++;
-    if (condition) {
-      console.log(`PASS: ${message}`);
-      passed++;
-    } else {
-      console.error(`FAIL: ${message}`);
-      throw new Error(`Assertion failed: ${message}`);
-    }
-  }
-
-  console.log('========================================');
-  console.log('RUNNING ALVIROS GUESTBOOK TEST SUITE');
-  console.log('========================================\n');
-
-  // Test 1: Query param token rejection (Mandatory Security Rule 1)
+  // 1. Query parameter token rejection
   {
-    const req = new Request('http://localhost/api/thoughts/my?token=thk_123456');
+    const req = new Request('http://localhost/api/thoughts/my?token=thk_1234', { method: 'GET' });
     const res = await worker.fetch(req, env);
-    assert(res.status === 400, '1. Query param token rejected with HTTP 400');
+    assert(res.status === 400, 'Real D1: Query param token rejected with HTTP 400');
   }
 
-  // Test 2: Oversized body rejection (> 10KB)
+  // 2. Body size enforcement independent of Content-Length
   {
-    const bigText = 'a'.repeat(12000);
+    // A. Explicit Content-Length > 10KB
+    const bigData = JSON.stringify({ text: 'A'.repeat(10500) });
+    const reqA = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': String(bigData.length) },
+      body: bigData
+    });
+    const resA = await worker.fetch(reqA, env);
+    assert(resA.status === 413, 'Real D1: Explicit Content-Length > 10KB rejected with HTTP 413');
+
+    // B. Missing Content-Length with oversized streamed body (>10KB)
+    // Create a ReadableStream without setting Content-Length
+    const bigStream = new ReadableStream({
+      start(controller) {
+        const chunk = new TextEncoder().encode('{"text":"' + 'X'.repeat(12000) + '"}');
+        controller.enqueue(chunk);
+        controller.close();
+      }
+    });
+    const reqB = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, // No Content-Length
+      body: bigStream,
+      duplex: 'half'
+    });
+    const resB = await worker.fetch(reqB, env);
+    assert(resB.status === 413, 'Real D1: Missing Content-Length with oversized streamed body rejected with HTTP 413');
+
+    // C. Incorrect/Spoofed Content-Length (Content-Length: 50, but body is 15KB)
+    const spoofedStream = new ReadableStream({
+      start(controller) {
+        const chunk = new TextEncoder().encode('{"text":"' + 'Y'.repeat(15000) + '"}');
+        controller.enqueue(chunk);
+        controller.close();
+      }
+    });
+    const reqC = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': '50' }, // Spoofed small length
+      body: spoofedStream,
+      duplex: 'half'
+    });
+    const resC = await worker.fetch(reqC, env);
+    assert(resC.status === 413, 'Real D1: Spoofed Content-Length with oversized body rejected with HTTP 413');
+
+    // D. Safe size streamed body (<10KB) succeeds
+    const safeData = JSON.stringify({ text: 'Valid stream thought', nickname: 'Streamer' });
+    const safeStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(safeData));
+        controller.close();
+      }
+    });
+    const reqD = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: safeStream,
+      duplex: 'half'
+    });
+    const resD = await worker.fetch(reqD, env);
+    assert(resD.status === 201, 'Real D1: Safe streamed body without Content-Length accepted with HTTP 201');
+  }
+
+  // 3. Visitor Token Creation & SQLite Storage Verification
+  let visitorAToken1, visitorAToken2, visitorBToken;
+  {
+    // Visitor A submission 1
+    const req1 = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.1' },
+      body: JSON.stringify({ text: 'Visitor A Thought 1', nickname: 'Alice', color: 'peach' })
+    });
+    const res1 = await worker.fetch(req1, env);
+    const data1 = await res1.json();
+    assert(res1.status === 201, 'Real D1: Visitor A first submission succeeds (HTTP 201)');
+    assert(typeof data1.token === 'string' && data1.token.startsWith('thk_') && data1.token.length === 68,
+      'Real D1: Visitor receives unguessable 32-byte crypto token');
+    visitorAToken1 = data1.token;
+
+    // Direct SQLite check: Token hash only, raw token NOT in DB
+    const thoughts = realDb.sqlite.prepare('SELECT id, token_hash, text FROM guestbook_thoughts WHERE id = ?').get(data1.thought.id);
+    assert(thoughts !== undefined, 'Real D1: Thought inserted into real SQLite table');
+    assert(thoughts.token_hash.length === 64 && !thoughts.token_hash.includes('thk_'),
+      'Real D1: Real SQLite stores 64-char SHA-256 token hash (never raw token)');
+
+    // Visitor A submission 2 (Multiple thoughts)
+    const req2 = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.1' },
+      body: JSON.stringify({ text: 'Visitor A Thought 2', nickname: 'Alice', color: 'sky' })
+    });
+    const res2 = await worker.fetch(req2, env);
+    const data2 = await res2.json();
+    assert(res2.status === 201, 'Real D1: Visitor A can submit second thought (HTTP 201)');
+    visitorAToken2 = data2.token;
+    assert(visitorAToken1 !== visitorAToken2, 'Real D1: Each thought receives a distinct cryptographically random token');
+
+    // Visitor B submission
+    const reqB = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.2' },
+      body: JSON.stringify({ text: 'Visitor B Private Thought', nickname: 'Bob', color: 'mint' })
+    });
+    const resB = await worker.fetch(reqB, env);
+    const dataB = await resB.json();
+    assert(resB.status === 201, 'Real D1: Visitor B submission succeeds (HTTP 201)');
+    visitorBToken = dataB.token;
+  }
+
+  // 4. Multi-Thought Visitor Retrieval & Isolation
+  {
+    // A. Retrieval via POST body
+    const reqA = new Request('http://localhost/api/thoughts/my', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokens: [visitorAToken1, visitorAToken2] })
+    });
+    const resA = await worker.fetch(reqA, env);
+    const dataA = await resA.json();
+    assert(resA.status === 200, 'Real D1: Visitor A retrieves collection via POST body (HTTP 200)');
+    assert(dataA.thoughts.length === 2, 'Real D1: Both Visitor A thoughts returned from SQLite');
+    const hasVisitorBThought = dataA.thoughts.some(t => t.text.includes('Visitor B'));
+    assert(!hasVisitorBThought, 'Real D1: Visitor Isolation - Visitor B thought NOT visible to Visitor A');
+
+    // B. Retrieval via Authorization header (single & comma-separated)
+    const reqHeader = new Request('http://localhost/api/thoughts/my', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${visitorAToken1}, ${visitorAToken2}` }
+    });
+    const resHeader = await worker.fetch(reqHeader, env);
+    const dataHeader = await resHeader.json();
+    assert(resHeader.status === 200 && dataHeader.thoughts.length === 2,
+      'Real D1: Retrieval via Authorization Bearer comma-separated tokens succeeds');
+
+    // C. Single thought backward-compatible GET /api/thoughts/my
+    const reqSingle = new Request('http://localhost/api/thoughts/my', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${visitorBToken}` }
+    });
+    const resSingle = await worker.fetch(reqSingle, env);
+    const dataSingle = await resSingle.json();
+    assert(resSingle.status === 200 && dataSingle.thought.text.includes('Visitor B'),
+      'Real D1: Single-thought GET /api/thoughts/my with Authorization Bearer header succeeds');
+  }
+
+  // 5. Concurrency-Safe Owner Login Brute-Force Protection
+  {
+    const attackerIp = '203.0.113.99';
+
+    // Fire 10 CONCURRENT failed login requests simultaneously against real SQLite
+    const failedPromises = Array.from({ length: 10 }, (_, i) => {
+      const req = new Request('http://localhost/api/owner/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': attackerIp },
+        body: JSON.stringify({ key: `wrong_attempt_${i}` })
+      });
+      return worker.fetch(req, env);
+    });
+
+    const failedResponses = await Promise.all(failedPromises);
+    const statusCodes = failedResponses.map(r => r.status);
+    const count401 = statusCodes.filter(s => s === 401).length;
+    const count429 = statusCodes.filter(s => s === 429).length;
+
+    assert(count401 === 4, `Real D1 Concurrency: Exactly 4 requests receive HTTP 401 (got ${count401})`);
+    assert(count429 === 6, `Real D1 Concurrency: Exactly 6 requests locked out with HTTP 429 (got ${count429})`);
+
+    // Verify lockout record in real SQLite
+    const lockoutRow = realDb.sqlite.prepare('SELECT attempts, locked_until FROM owner_login_attempts').get();
+    assert(lockoutRow && lockoutRow.attempts >= 5 && lockoutRow.locked_until > 0,
+      'Real D1: owner_login_attempts table in SQLite reflects active lockout');
+
+    // Subsequent single request is locked out
+    const followUpReq = new Request('http://localhost/api/owner/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': attackerIp },
+      body: JSON.stringify({ key: 'wrong_key_again' })
+    });
+    const followUpRes = await worker.fetch(followUpReq, env);
+    assert(followUpRes.status === 429, 'Real D1: Subsequent request rejected with HTTP 429 while locked');
+
+    // Test lockout expiration recovery
+    // Fast-forward locked_until to past in SQLite
+    realDb.sqlite.prepare('UPDATE owner_login_attempts SET locked_until = 100').run();
+    const afterExpireReq = new Request('http://localhost/api/owner/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': attackerIp },
+      body: JSON.stringify({ key: 'wrong_after_expiration' })
+    });
+    const afterExpireRes = await worker.fetch(afterExpireReq, env);
+    assert(afterExpireRes.status === 401, 'Real D1: After lockout expiration, request returns 401 and counter resets');
+
+    // Test successful authentication clears failed attempts
+    const validLoginReq = new Request('http://localhost/api/owner/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': attackerIp },
+      body: JSON.stringify({ key: env.ADMIN_KEY })
+    });
+    const validLoginRes = await worker.fetch(validLoginReq, env);
+    const validLoginData = await validLoginRes.json();
+    assert(validLoginRes.status === 200, 'Real D1: Valid owner login succeeds with HTTP 200');
+    assert(typeof validLoginData.session_token === 'string' && validLoginData.session_token.startsWith('adm_'),
+      'Real D1: Admin session token issued');
+
+    // Verify failed-attempt record was cleared from SQLite
+    const clearedRow = realDb.sqlite.prepare('SELECT attempts FROM owner_login_attempts').get();
+    assert(!clearedRow, 'Real D1: Successful login completely cleared owner_login_attempts row in SQLite');
+
+    // Verify owner session token is HASHED in SQLite
+    const sessionInDb = realDb.sqlite.prepare('SELECT session_hash FROM owner_sessions').get();
+    assert(sessionInDb && sessionInDb.session_hash.length === 64 && !sessionInDb.session_hash.includes('adm_'),
+      'Real D1: owner_sessions stores only SHA-256 session_hash (never raw session token)');
+
+    // Authenticated owner can list all thoughts
+    const ownerListReq = new Request('http://localhost/api/owner/thoughts', {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${validLoginData.session_token}` }
+    });
+    const ownerListRes = await worker.fetch(ownerListReq, env);
+    const ownerListData = await ownerListRes.json();
+    assert(ownerListRes.status === 200 && ownerListData.thoughts.length === 4,
+      'Real D1: Authenticated owner can list all thoughts (including both visitors)');
+
+    // Authenticated owner can delete thought
+    const thoughtToDelete = ownerListData.thoughts[0].id;
+    const deleteReq = new Request(`http://localhost/api/owner/thoughts/${thoughtToDelete}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${validLoginData.session_token}` }
+    });
+    const deleteRes = await worker.fetch(deleteReq, env);
+    assert(deleteRes.status === 200, 'Real D1: Owner can delete thought via SQLite');
+
+    // Owner logout
+    const logoutReq = new Request('http://localhost/api/owner/logout', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${validLoginData.session_token}` }
+    });
+    const logoutRes = await worker.fetch(logoutReq, env);
+    assert(logoutRes.status === 200, 'Real D1: Owner logout returns HTTP 200');
+
+    // Logged-out session rejected
+    const expiredListRes = await worker.fetch(ownerListReq, env);
+    assert(expiredListRes.status === 401, 'Real D1: Logged-out session rejected with HTTP 401');
+  }
+
+  // 6. Real Concurrent Submission Rate Limiting (SQLite Atomic Upsert)
+  {
+    const rateLimitIp = '192.0.2.77';
+
+    // Fire 10 CONCURRENT submissions from the same IP at the exact same time
+    const concurrentSubmissions = Array.from({ length: 10 }, (_, i) => {
+      const req = new Request('http://localhost/api/thoughts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': rateLimitIp },
+        body: JSON.stringify({ text: `Concurrent thought #${i}` })
+      });
+      return worker.fetch(req, env);
+    });
+
+    const results = await Promise.all(concurrentSubmissions);
+    const statuses = results.map(r => r.status);
+    const count201 = statuses.filter(s => s === 201).length;
+    const count429 = statuses.filter(s => s === 429).length;
+
+    assert(count201 === 5, `Real D1 Concurrency: Exactly 5 concurrent submissions allowed (got ${count201})`);
+    assert(count429 === 5, `Real D1 Concurrency: Exactly 5 concurrent submissions rate-limited with HTTP 429 (got ${count429})`);
+  }
+}
+
+// ============================================================================
+// SUITE 2: LIGHTWEIGHT MOCK UNIT TESTS
+// ============================================================================
+
+async function runMockUnitTests() {
+  console.log('\n======================================================');
+  console.log('SUITE 2: LIGHTWEIGHT MOCK UNIT TESTS');
+  console.log('Fast, dependency-free logical unit tests using MockD1');
+  console.log('======================================================\n');
+
+  const mockDb = new MockD1Database();
+  const env = {
+    DB: mockDb,
+    ADMIN_KEY: 'mock_admin_secret_key',
+    ALLOWED_ORIGIN: '*'
+  };
+
+  // Mock Unit Test 1: Query param rejection
+  {
+    const req = new Request('http://localhost/api/thoughts/my?token=test', { method: 'GET' });
+    const res = await worker.fetch(req, env);
+    assert(res.status === 400, 'Mock Unit: Query param token rejected with HTTP 400');
+  }
+
+  // Mock Unit Test 2: Payload > 10KB rejected
+  {
+    const big = JSON.stringify({ text: 'M'.repeat(11000) });
     const req = new Request('http://localhost/api/thoughts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': bigText.length.toString() },
-      body: JSON.stringify({ text: bigText })
+      headers: { 'Content-Length': String(big.length) },
+      body: big
     });
     const res = await worker.fetch(req, env);
-    assert(res.status === 413, '2. Oversized payload (>10KB) rejected with HTTP 413');
+    assert(res.status === 413, 'Mock Unit: Oversized payload rejected with HTTP 413');
   }
 
-  // Test 3: Invalid input rejection
+  // Mock Unit Test 3: Empty thought rejected
   {
     const req = new Request('http://localhost/api/thoughts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: '' })
+      body: JSON.stringify({ text: '   ' })
     });
     const res = await worker.fetch(req, env);
-    assert(res.status === 400, '3. Empty thought rejected with HTTP 400');
+    assert(res.status === 400, 'Mock Unit: Empty thought rejected with HTTP 400');
   }
 
-  // Test 4: Anonymous visitor submission
-  let tokenA1, tokenA2, tokenB1;
+  // Mock Unit Test 4: Successful submission & token generation
+  let token1;
   {
     const req = new Request('http://localhost/api/thoughts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '10.0.0.1' },
-      body: JSON.stringify({ text: 'First thought from Visitor A', nickname: 'Alice', color: 'yellow' })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Mock thought 1', nickname: 'MockUser' })
     });
     const res = await worker.fetch(req, env);
-    assert(res.status === 201, '4a. Anonymous Visitor A first submission succeeds (HTTP 201)');
     const data = await res.json();
-    assert(data.token && data.token.startsWith('thk_'), '4b. Visitor receives unguessable 32-byte crypto token');
-    tokenA1 = data.token;
+    assert(res.status === 201, 'Mock Unit: Submission succeeds with HTTP 201');
+    assert(typeof data.token === 'string' && data.token.startsWith('thk_'), 'Mock Unit: Crypto token returned');
+    token1 = data.token;
   }
 
-  // Test 5: Token hashing (D1 stores ONLY SHA-256 hash, never raw token)
-  {
-    assert(db.thoughts.length === 1, '5a. Thought stored in database');
-    assert(db.thoughts[0].token_hash !== tokenA1, '5b. Database does NOT store raw visitor token');
-    assert(db.thoughts[0].token_hash.length === 64, '5c. Database stores 64-char SHA-256 token hash');
-  }
-
-  // Test 6: Multiple thoughts per visitor (Visitor A submits a second thought)
-  {
-    const req = new Request('http://localhost/api/thoughts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '10.0.0.1' },
-      body: JSON.stringify({ text: 'Second thought from Visitor A', nickname: 'Alice', color: 'mint' })
-    });
-    const res = await worker.fetch(req, env);
-    assert(res.status === 201, '6a. Visitor A can submit multiple thoughts (HTTP 201)');
-    const data = await res.json();
-    tokenA2 = data.token;
-    assert(tokenA1 !== tokenA2, '6b. Each thought receives a distinct unguessable token');
-  }
-
-  // Test 7: Visitor B submission
-  {
-    const req = new Request('http://localhost/api/thoughts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '10.0.0.2' },
-      body: JSON.stringify({ text: 'Thought from Visitor B', nickname: 'Bob', color: 'peach' })
-    });
-    const res = await worker.fetch(req, env);
-    assert(res.status === 201, '7. Visitor B submission succeeds (HTTP 201)');
-    const data = await res.json();
-    tokenB1 = data.token;
-  }
-
-  // Test 8: Multiple thoughts retrieval via POST /api/thoughts/my
+  // Mock Unit Test 5: Multi-thought retrieval
   {
     const req = new Request('http://localhost/api/thoughts/my', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tokens: [tokenA1, tokenA2] })
-    });
-    const res = await worker.fetch(req, env);
-    assert(res.status === 200, '8a. Visitor A retrieves collection of their own thoughts (HTTP 200)');
-    const data = await res.json();
-    assert(Array.isArray(data.thoughts) && data.thoughts.length === 2, '8b. Both Visitor A thoughts returned');
-    assert(!data.thoughts.some(t => t.text.includes('Visitor B')), '8c. Visitor B thought is NOT present in Visitor A retrieval');
-  }
-
-  // Test 9: Visitor isolation (Visitor B cannot access Visitor A thoughts)
-  {
-    const req = new Request('http://localhost/api/thoughts/my', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tokens: [tokenB1] })
+      body: JSON.stringify({ tokens: [token1] })
     });
     const res = await worker.fetch(req, env);
     const data = await res.json();
-    assert(data.thoughts.length === 1 && data.thoughts[0].nickname === 'Bob', '9. Strict Visitor Isolation: Visitor B sees only their own thought');
+    assert(res.status === 200 && data.thoughts.length === 1, 'Mock Unit: Multi-thought retrieval succeeds');
   }
 
-  // Test 10: Invalid tokens return empty safely without leaking
-  {
-    const req = new Request('http://localhost/api/thoughts/my', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tokens: ['thk_' + '0'.repeat(64)] })
-    });
-    const res = await worker.fetch(req, env);
-    const data = await res.json();
-    assert(data.thoughts.length === 0, '10. Non-existent tokens return empty list without leaking');
-  }
-
-  // Test 11: Owner login failure
+  // Mock Unit Test 6: Invalid owner login
   {
     const req = new Request('http://localhost/api/owner/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.168.1.1' },
-      body: JSON.stringify({ key: 'wrong-password' })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'wrong_key' })
     });
     const res = await worker.fetch(req, env);
-    assert(res.status === 401, '11. Incorrect owner key returns HTTP 401');
+    assert(res.status === 401, 'Mock Unit: Invalid credentials return HTTP 401');
   }
 
-  // Test 12: Owner login brute-force rate-limiting
-  {
-    const ip = '192.168.1.50';
-    for (let i = 0; i < 4; i++) {
-      const req = new Request('http://localhost/api/owner/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
-        body: JSON.stringify({ key: 'wrong' })
-      });
-      const res = await worker.fetch(req, env);
-      assert(res.status === 401, `12a. Failed attempt #${i + 1} returns HTTP 401`);
-    }
-
-    // 5th failed attempt triggers lockout
-    const req5 = new Request('http://localhost/api/owner/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
-      body: JSON.stringify({ key: 'wrong' })
-    });
-    const res5 = await worker.fetch(req5, env);
-    assert(res5.status === 401, '12b. 5th failed attempt recorded');
-
-    // 6th attempt is blocked by brute force protection
-    const req6 = new Request('http://localhost/api/owner/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
-      body: JSON.stringify({ key: env.ADMIN_KEY }) // even with correct key
-    });
-    const res6 = await worker.fetch(req6, env);
-    assert(res6.status === 429, '12c. 6th attempt locked out with HTTP 429');
-  }
-
-  // Test 13: Owner login success & hashed session storage
+  // Mock Unit Test 7: Valid owner login
   let sessionToken;
   {
     const req = new Request('http://localhost/api/owner/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.168.1.99' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: env.ADMIN_KEY })
     });
     const res = await worker.fetch(req, env);
-    assert(res.status === 200, '13a. Valid owner key returns HTTP 200');
     const data = await res.json();
-    assert(data.session_token && data.session_token.startsWith('adm_'), '13b. Admin session token issued');
+    assert(res.status === 200 && data.session_token.startsWith('adm_'), 'Mock Unit: Valid owner login succeeds');
     sessionToken = data.session_token;
-
-    // Check that D1 stores session hash, NOT raw session token
-    assert(!db.sessions.has(sessionToken), '13c. D1 does NOT store raw session token');
-    assert(db.sessions.size > 0, '13d. D1 stores hashed session token');
   }
 
-  // Test 14: Owner retrieves all thoughts
+  // Mock Unit Test 8: Owner list & logout
   {
-    const req = new Request('http://localhost/api/owner/thoughts', {
+    const listReq = new Request('http://localhost/api/owner/thoughts', {
+      method: 'GET',
       headers: { 'Authorization': `Bearer ${sessionToken}` }
     });
-    const res = await worker.fetch(req, env);
-    assert(res.status === 200, '14a. Authenticated owner retrieves all thoughts (HTTP 200)');
-    const data = await res.json();
-    assert(data.thoughts.length === 3, '14b. Owner sees all 3 visitor submissions');
-  }
+    const listRes = await worker.fetch(listReq, env);
+    assert(listRes.status === 200, 'Mock Unit: Owner thought retrieval succeeds');
 
-  // Test 15: Owner deletes a thought
-  {
-    const req = new Request('http://localhost/api/owner/thoughts/1', {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${sessionToken}` }
-    });
-    const res = await worker.fetch(req, env);
-    assert(res.status === 200, '15a. Owner can delete thought (HTTP 200)');
-    assert(db.thoughts.length === 2, '15b. Database reflects deletion');
-  }
-
-  // Test 16: Owner logout & session invalidation
-  {
     const logoutReq = new Request('http://localhost/api/owner/logout', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${sessionToken}` }
     });
     const logoutRes = await worker.fetch(logoutReq, env);
-    assert(logoutRes.status === 200, '16a. Owner logout returns HTTP 200');
-
-    // Check that deleted session is rejected
-    const listReq = new Request('http://localhost/api/owner/thoughts', {
-      headers: { 'Authorization': `Bearer ${sessionToken}` }
-    });
-    const listRes = await worker.fetch(listReq, env);
-    assert(listRes.status === 401, '16b. Logged-out session rejected with HTTP 401');
+    assert(logoutRes.status === 200, 'Mock Unit: Owner logout succeeds');
   }
-
-  // Test 17: Concurrent visitor rate limiting (Atomic race-condition check)
-  {
-    const testIp = '10.0.0.88';
-    // Send 6 concurrent requests simultaneously
-    const promises = Array.from({ length: 6 }).map((_, i) => {
-      const req = new Request('http://localhost/api/thoughts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': testIp },
-        body: JSON.stringify({ text: `Concurrent test ${i}`, nickname: 'Racer' })
-      });
-      return worker.fetch(req, env);
-    });
-
-    const responses = await Promise.all(promises);
-    const statuses = responses.map(r => r.status);
-    const successCount = statuses.filter(s => s === 201).length;
-    const rateLimitedCount = statuses.filter(s => s === 429).length;
-
-    assert(successCount === 5, '17a. Exactly 5 concurrent submissions allowed');
-    assert(rateLimitedCount === 1, '17b. 6th concurrent submission atomically rate-limited with HTTP 429');
-  }
-
-  console.log('\n========================================');
-  console.log(`ALL TESTS PASSED: ${passed}/${total}`);
-  console.log('========================================');
 }
 
-runTests().catch(err => {
-  console.error('\nTEST SUITE FAILED:', err);
+// ============================================================================
+// MAIN RUNNER
+// ============================================================================
+
+async function main() {
+  console.log('Starting AlvirOS Guestbook Verification...\n');
+
+  if (hasNativeSqlite) {
+    await runRealIntegrationTests();
+  }
+
+  await runMockUnitTests();
+
+  console.log('\n======================================================');
+  console.log(`TEST SUMMARY: ${totalPassed} passed, ${totalFailed} failed.`);
+  console.log('======================================================\n');
+
+  if (totalFailed > 0) {
+    process.exit(1);
+  }
+}
+
+main().catch(err => {
+  console.error('Test execution failed with error:', err);
   process.exit(1);
 });

@@ -6,28 +6,52 @@ This backend provides a secure, anonymous, private guestbook for AlvirOS powered
 
 ## 1. Automated Test Suite
 
-A comprehensive test suite verifying all 17 security and reliability invariants is included in `backend/test.js`.
+A comprehensive test suite verifying all security, concurrency, and reliability invariants is included in `backend/test.js`.
 
 ### Run Tests Locally:
 ```bash
 node backend/test.js
 ```
 
-### Verified Behaviors (35/35 Assertions):
-1. **Query-string Token Rejection (HTTP 400)**: URL query parameters (`?token=...`, `?tokens=...`) are rejected per Mandatory Security Rule 1.
-2. **Payload Size Limits (HTTP 413)**: Request bodies exceeding 10KB are rejected.
-3. **Input Validation (HTTP 400)**: Empty, missing, or malformed inputs are rejected.
-4. **Anonymous Visitor Submissions (HTTP 201)**: Issues 32-byte cryptographically secure visitor tokens (`thk_...`).
-5. **Token Hashing in D1**: Database stores ONLY SHA-256 hashes (`token_hash`), never raw tokens.
-6. **Multiple Thoughts Per Visitor**: Visitors can submit multiple notes and retrieve their collection via `POST /api/thoughts/my`.
-7. **Strict Visitor Isolation**: Each visitor sees ONLY thoughts matching their own token collection.
-8. **Owner Authentication & Rate Limiting**: Durable brute-force protection locks out repeated failed logins (5 attempts / 15-minute lockout).
-9. **Hashed Owner Session Tokens**: Admin sessions (`adm_...`) are stored in D1 as SHA-256 hashes only.
-10. **Atomic Rate Limiting**: Simultaneous concurrent requests are handled atomically using SQLite `ON CONFLICT ... RETURNING` statements, preventing race conditions.
+### Test Suite Structure:
+
+The test suite clearly distinguishes between two testing layers:
+
+#### Suite 1: Real SQLite / D1 Integration Tests (32 Assertions)
+Executes the actual `backend/schema.sql` and Worker against Node.js's native SQLite engine (`node:sqlite` / `DatabaseSync`), testing real SQL statements:
+- **Independent Body Size & Stream Limiting (HTTP 413)**: Rejects bodies exceeding 10KB even when `Content-Length` is absent, spoofed, or streamed via `ReadableStream` chunks, avoiding unbounded `request.json()` memory exhaustion.
+- **Crypto Visitor Token Generation**: Generates 32-byte cryptographically secure tokens (`thk_...`).
+- **Token Hashing in Real SQLite**: Verifies raw tokens are NEVER stored in the database; only 64-character SHA-256 hashes are persisted.
+- **Strict Visitor Isolation**: Each visitor sees ONLY thoughts matching their own token collection. Visitor A cannot access Visitor B's thoughts.
+- **Real Concurrency-Safe Owner Brute-Force Lockout**: 10 simultaneous failed logins executed via `Promise.all`: exactly 4 receive HTTP 401, attempt 5 triggers lockout with HTTP 429, and attempts 6–10 are rejected with HTTP 429.
+- **Lockout Expiration & Recovery**: Verifies lockout expiration and automatic attempt counter reset.
+- **Session Security**: Owner session tokens (`adm_...`) are stored in D1 as SHA-256 hashes only. Successful login clears failed attempt records.
+- **Real Concurrency Submission Rate Limiting**: 10 simultaneous visitor submissions executed via `Promise.all`: exactly 5 succeed (HTTP 201), and the remaining 5 are atomically blocked with HTTP 429 using SQLite `INSERT ... ON CONFLICT ... DO UPDATE ... RETURNING`.
+
+#### Suite 2: Lightweight Mock Unit Tests (10 Assertions)
+Fast, dependency-free logical unit tests using `MockD1` to verify request routing and payload validation in environments without native SQLite bindings.
 
 ---
 
-## 2. Deployment Steps
+## 2. Visitor Token Transport Rationale
+
+The backend supports multiple secure transport options for visitor tokens while strictly adhering to security invariants:
+
+1. **Why `POST /api/thoughts/my` with JSON Body `{ tokens: string[] }` is Used:**
+   - **RFC 6750 Standard Compliance**: RFC 6750 defines `Authorization: Bearer <token>` for a *single* credentials string. There is no standard specification for transmitting an arbitrary collection of multiple bearer tokens in a single `Authorization` header.
+   - **Header Size Limits**: A visitor who submits multiple thoughts across sessions may hold 10, 20, or up to 50 tokens (3.4KB+ of token strings alone). Large request headers risk exceeding edge proxy / WAF header size limits and triggering `431 Request Header Fields Too Large`.
+   - **CDN / Proxy Body Dropping**: Standard HTTP `GET` requests with a payload body are stripped or rejected by intermediate proxies, CDNs, and caches.
+   - **URL Query String Prohibition**: Visitor tokens must **never** be passed in URL query parameters, as URLs are routinely recorded in browser histories, access logs, and HTTP Referer headers.
+   - Therefore, a `POST` request with a JSON body is the standard, secure, and robust pattern for querying by a collection of identifiers.
+
+2. **Authorization Header Support:**
+   - Single-token retrieval is supported via `GET /api/thoughts/my` with `Authorization: Bearer <token>`.
+   - In addition, `POST /api/thoughts/my` also accepts tokens passed in the `Authorization: Bearer <token1>, <token2>` header and merges them with any tokens provided in the body.
+   - In all cases, raw visitor tokens are never logged, and only SHA-256 hashes are queried against the database.
+
+---
+
+## 3. Deployment Steps
 
 From your terminal, navigate to the `backend/` directory:
 
@@ -68,7 +92,7 @@ npx wrangler deploy
 
 ---
 
-## 3. Configuring the Portfolio Frontend
+## 4. Configuring the Portfolio Frontend
 
 The frontend does **NOT** contain any hardcoded production endpoints. To connect the frontend to your deployed Worker:
 
@@ -84,7 +108,7 @@ Visitor entries are keyed to unguessable cryptographic tokens stored in the brow
 
 ---
 
-## 4. Revocation of Compromised JSONBin Credential
+## 5. Revocation of Compromised JSONBin Credential
 
 The legacy JSONBin master key previously committed in early prototype iterations must be revoked:
 1. Log in to your [JSONBin.io](https://jsonbin.io/) dashboard.

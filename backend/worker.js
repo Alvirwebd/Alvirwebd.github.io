@@ -3,6 +3,77 @@
  * Cloudflare Worker + D1 Database
  */
 
+export class PayloadTooLargeError extends Error {
+  constructor(message = 'Payload Too Large: Maximum allowed size is 10KB.') {
+    super(message);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
+export async function readSafeJson(request, maxBytes = 10240) {
+  // 1. Check Content-Length header if present
+  const clHeader = request.headers.get('Content-Length');
+  if (clHeader !== null) {
+    const cl = parseInt(clHeader, 10);
+    if (!isNaN(cl) && cl > maxBytes) {
+      throw new PayloadTooLargeError();
+    }
+  }
+
+  // 2. Stream body and count bytes independently (handles missing/spoofed Content-Length)
+  if (!request.body) {
+    return null;
+  }
+
+  let totalBytes = 0;
+  const chunks = [];
+
+  if (typeof request.body.getReader === 'function') {
+    const reader = request.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > maxBytes) {
+          try { await reader.cancel(); } catch (_) {}
+          throw new PayloadTooLargeError();
+        }
+        chunks.push(value);
+      }
+    } finally {
+      try { reader.releaseLock(); } catch (_) {}
+    }
+  } else if (typeof request.arrayBuffer === 'function') {
+    const buf = await request.arrayBuffer();
+    if (buf.byteLength > maxBytes) {
+      throw new PayloadTooLargeError();
+    }
+    chunks.push(new Uint8Array(buf));
+    totalBytes = buf.byteLength;
+  } else if (typeof request.text === 'function') {
+    const text = await request.text();
+    const encoder = new TextEncoder();
+    const encoded = encoder.encode(text);
+    if (encoded.byteLength > maxBytes) {
+      throw new PayloadTooLargeError();
+    }
+    return JSON.parse(text);
+  }
+
+  if (chunks.length === 0) return null;
+
+  const decoder = new TextDecoder('utf-8');
+  let rawText = '';
+  for (const chunk of chunks) {
+    rawText += decoder.decode(chunk, { stream: true });
+  }
+  rawText += decoder.decode();
+
+  if (!rawText.trim()) return null;
+  return JSON.parse(rawText);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin') || '*';
@@ -28,7 +99,7 @@ export default {
       }, 400, corsHeaders);
     }
 
-    // Reject oversized request payloads (> 10KB)
+    // Top-level rejection for oversized request payloads if Content-Length specified
     const contentLength = parseInt(request.headers.get('Content-Length') || '0', 10);
     if (contentLength > 10240) {
       return jsonResponse({ error: 'Payload Too Large: Maximum allowed size is 10KB.' }, 413, corsHeaders);
@@ -45,7 +116,16 @@ export default {
           }, 429, corsHeaders);
         }
 
-        const body = await request.json().catch(() => null);
+        let body;
+        try {
+          body = await readSafeJson(request, 10240);
+        } catch (err) {
+          if (err instanceof PayloadTooLargeError) {
+            return jsonResponse({ error: 'Payload Too Large: Maximum allowed size is 10KB.' }, 413, corsHeaders);
+          }
+          return jsonResponse({ error: 'Invalid JSON request body.' }, 400, corsHeaders);
+        }
+
         if (!body || typeof body !== 'object') {
           return jsonResponse({ error: 'Invalid JSON request body.' }, 400, corsHeaders);
         }
@@ -92,12 +172,31 @@ export default {
 
       // 2. POST /api/thoughts/my (Retrieve multiple thoughts for visitor's stored token collection)
       if (request.method === 'POST' && path === '/api/thoughts/my') {
-        const body = await request.json().catch(() => null);
-        if (!body || !Array.isArray(body.tokens)) {
-          return jsonResponse({ error: 'Invalid request: "tokens" array is required.' }, 400, corsHeaders);
+        let body;
+        try {
+          body = await readSafeJson(request, 10240);
+        } catch (err) {
+          if (err instanceof PayloadTooLargeError) {
+            return jsonResponse({ error: 'Payload Too Large: Maximum allowed size is 10KB.' }, 413, corsHeaders);
+          }
+          return jsonResponse({ error: 'Invalid JSON request body.' }, 400, corsHeaders);
         }
 
-        const tokens = body.tokens.filter(t => typeof t === 'string' && t.startsWith('thk_') && t.length === 68);
+        // Support tokens from JSON body AND/OR Authorization headers
+        const tokenSet = new Set();
+        if (body && Array.isArray(body.tokens)) {
+          for (const t of body.tokens) {
+            if (typeof t === 'string') tokenSet.add(t.trim());
+          }
+        }
+
+        const headerTokens = extractTokensFromHeader(request);
+        for (const t of headerTokens) {
+          tokenSet.add(t);
+        }
+
+        const tokens = Array.from(tokenSet).filter(t => t.startsWith('thk_') && t.length === 68);
+
         if (tokens.length === 0) {
           return jsonResponse({ success: true, thoughts: [] }, 200, corsHeaders);
         }
@@ -134,27 +233,57 @@ export default {
         return jsonResponse({ success: true, thought }, 200, corsHeaders);
       }
 
-      // 3. POST /api/owner/login (Authenticate owner with durable brute-force protection)
+      // 3. POST /api/owner/login (Authenticate owner with durable, concurrency-safe brute-force protection)
       if (request.method === 'POST' && path === '/api/owner/login') {
         const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
-        const rateCheck = await checkOwnerLoginRateLimit(env.DB, clientIp);
-        if (!rateCheck.allowed) {
+
+        // Check if IP is currently locked out
+        const lockStatus = await getOwnerLockStatus(env.DB, clientIp);
+        if (lockStatus.locked) {
           return jsonResponse({
-            error: `Too many failed login attempts. Locked for ${Math.ceil(rateCheck.remainingLockSeconds / 60)} minutes.`
-          }, 429, corsHeaders);
+            error: `Too many failed login attempts. Locked for ${Math.ceil(lockStatus.remainingLockSeconds / 60)} minutes.`
+          }, 429, {
+            ...corsHeaders,
+            'Retry-After': String(lockStatus.remainingLockSeconds)
+          });
         }
 
-        const body = await request.json().catch(() => ({}));
-        const { key } = body;
+        let body;
+        try {
+          body = await readSafeJson(request, 10240);
+        } catch (err) {
+          if (err instanceof PayloadTooLargeError) {
+            return jsonResponse({ error: 'Payload Too Large: Maximum allowed size is 10KB.' }, 413, corsHeaders);
+          }
+          return jsonResponse({ error: 'Invalid JSON request body.' }, 400, corsHeaders);
+        }
+
+        const { key } = body || {};
 
         if (!key || typeof key !== 'string' || !env.ADMIN_KEY) {
-          await recordFailedOwnerLogin(env.DB, clientIp);
+          const failResult = await recordFailedOwnerLoginAtomic(env.DB, clientIp);
+          if (failResult.locked) {
+            return jsonResponse({
+              error: `Too many failed login attempts. Locked for ${Math.ceil(failResult.remainingLockSeconds / 60)} minutes.`
+            }, 429, {
+              ...corsHeaders,
+              'Retry-After': String(failResult.remainingLockSeconds)
+            });
+          }
           return jsonResponse({ error: 'Invalid owner credentials.' }, 401, corsHeaders);
         }
 
         const keyOk = constantTimeCompare(key, env.ADMIN_KEY);
         if (!keyOk) {
-          await recordFailedOwnerLogin(env.DB, clientIp);
+          const failResult = await recordFailedOwnerLoginAtomic(env.DB, clientIp);
+          if (failResult.locked) {
+            return jsonResponse({
+              error: `Too many failed login attempts. Locked for ${Math.ceil(failResult.remainingLockSeconds / 60)} minutes.`
+            }, 429, {
+              ...corsHeaders,
+              'Retry-After': String(failResult.remainingLockSeconds)
+            });
+          }
           return jsonResponse({ error: 'Invalid owner credentials.' }, 401, corsHeaders);
         }
 
@@ -225,6 +354,9 @@ export default {
       return jsonResponse({ error: 'Endpoint not found.' }, 404, corsHeaders);
 
     } catch (err) {
+      if (err instanceof PayloadTooLargeError) {
+        return jsonResponse({ error: 'Payload Too Large: Maximum allowed size is 10KB.' }, 413, corsHeaders);
+      }
       console.error('Worker error:', err);
       return jsonResponse({ error: 'Internal Server Error' }, 500, corsHeaders);
     }
@@ -247,6 +379,26 @@ function extractToken(request) {
     return auth.slice(7).trim();
   }
   return request.headers.get('X-Visitor-Token') || null;
+}
+
+function extractTokensFromHeader(request) {
+  const tokens = [];
+  const auth = request.headers.get('Authorization');
+  if (auth && auth.startsWith('Bearer ')) {
+    const raw = auth.slice(7).trim();
+    for (const part of raw.split(',')) {
+      const trimmed = part.trim();
+      if (trimmed) tokens.push(trimmed);
+    }
+  }
+  const xToken = request.headers.get('X-Visitor-Token');
+  if (xToken) {
+    for (const part of xToken.split(',')) {
+      const trimmed = part.trim();
+      if (trimmed) tokens.push(trimmed);
+    }
+  }
+  return tokens;
 }
 
 async function sha256Hex(str) {
@@ -295,10 +447,9 @@ async function checkSubmissionRateLimit(db, clientIp) {
 }
 
 /**
- * Durable brute-force protection for owner login.
- * Tracks failed attempts server-side in owner_login_attempts table.
+ * Concurrency-safe lookup of current owner lockout status.
  */
-async function checkOwnerLoginRateLimit(db, clientIp) {
+async function getOwnerLockStatus(db, clientIp) {
   const now = Math.floor(Date.now() / 1000);
   const ipHash = await sha256Hex('owner_' + clientIp);
 
@@ -307,25 +458,51 @@ async function checkOwnerLoginRateLimit(db, clientIp) {
   ).bind(ipHash).first();
 
   if (record && record.locked_until > now) {
-    return { allowed: false, remainingLockSeconds: record.locked_until - now };
+    return { locked: true, remainingLockSeconds: record.locked_until - now };
   }
-  return { allowed: true };
+  return { locked: false, remainingLockSeconds: 0 };
 }
 
-async function recordFailedOwnerLogin(db, clientIp) {
+/**
+ * Concurrency-safe atomic accounting for failed owner login attempts.
+ * Uses SQLite ON CONFLICT ... DO UPDATE ... RETURNING to ensure concurrent
+ * requests cannot bypass the 5-attempt threshold.
+ */
+async function recordFailedOwnerLoginAtomic(db, clientIp) {
   const now = Math.floor(Date.now() / 1000);
-  const lockDuration = 900; // 15 minutes lockout after 5 consecutive failures
+  const lockDuration = 900; // 15 minutes
   const ipHash = await sha256Hex('owner_' + clientIp);
 
   const stmt = db.prepare(`
     INSERT INTO owner_login_attempts (ip_hash, attempts, locked_until)
     VALUES (?, 1, 0)
     ON CONFLICT(ip_hash) DO UPDATE SET
-      attempts = CASE WHEN locked_until < ? AND locked_until > 0 THEN 1 ELSE attempts + 1 END,
-      locked_until = CASE WHEN attempts + 1 >= 5 THEN ? ELSE 0 END
+      attempts = CASE
+        WHEN locked_until > 0 AND locked_until <= ? THEN 1
+        WHEN locked_until > ? THEN attempts
+        ELSE attempts + 1
+      END,
+      locked_until = CASE
+        WHEN locked_until > ? THEN locked_until
+        WHEN (CASE WHEN locked_until > 0 AND locked_until <= ? THEN 1 ELSE attempts + 1 END) >= 5 THEN ?
+        ELSE 0
+      END
+    RETURNING attempts, locked_until;
   `);
 
-  await stmt.bind(ipHash, now, now + lockDuration).run();
+  const res = await stmt.bind(
+    ipHash,
+    now,
+    now,
+    now,
+    now,
+    now + lockDuration
+  ).first();
+
+  if (res && res.locked_until > now) {
+    return { locked: true, remainingLockSeconds: res.locked_until - now, attempts: res.attempts };
+  }
+  return { locked: false, remainingLockSeconds: 0, attempts: res ? res.attempts : 1 };
 }
 
 async function clearOwnerLoginAttempts(db, clientIp) {
