@@ -907,6 +907,7 @@
       justify-content: center;
       background: rgba(4, 6, 10, 0.82);
       backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       padding: 10px;
     }
     #monitorContainer.active-workstation {
@@ -999,6 +1000,8 @@
       justify-content: space-between;
       cursor: grab;
       touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
     }
     .retro-window:not(.is-active-win) .retro-titlebar {
       background: linear-gradient(90deg, #808080, #a0a0a0) !important;
@@ -1187,6 +1190,7 @@
       z-index: 50;
       background: rgba(8, 12, 18, 0.85);
       backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1232,6 +1236,10 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.4);
     }
 
+    .retro-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: #c0c0c0 #dfdfdf;
+    }
     .retro-scroll::-webkit-scrollbar { width: 12px; background: #dfdfdf; }
     .retro-scroll::-webkit-scrollbar-thumb {
       background: #c0c0c0;
@@ -1239,6 +1247,10 @@
       border-left: 1.5px solid #fff;
       border-right: 1.5px solid #000;
       border-bottom: 1.5px solid #000;
+    }
+    .book-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
     }
     .book-scroll::-webkit-scrollbar { width: 6px; }
     .book-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -1795,6 +1807,12 @@
         width: 26px !important;
         height: 24px !important;
         flex-shrink: 0;
+      }
+      #winPlayer .retro-btn {
+        width: auto !important;
+        min-width: 56px;
+        height: 28px !important;
+        padding: 0 6px !important;
       }
       .win-ctl-max { display: none !important; }
       .retro-window .p-3,
@@ -4848,14 +4866,18 @@ Duration: 2022 – Present (6th Semester)<br><br>
     }
 
     function copyEmailToClipboard() {
-      navigator.clipboard.writeText(MY_EMAIL).then(() => {
-        const b1 = document.getElementById('emailCopiedBadge');
-        const b2 = document.getElementById('modalEmailCopied');
-        if (b1) { b1.classList.remove('hidden'); setTimeout(() => b1.classList.add('hidden'), 3500); }
-        if (b2) { b2.classList.remove('hidden'); setTimeout(() => b2.classList.add('hidden'), 3500); }
-      }).catch(() => {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(MY_EMAIL).then(() => {
+          const b1 = document.getElementById('emailCopiedBadge');
+          const b2 = document.getElementById('modalEmailCopied');
+          if (b1) { b1.classList.remove('hidden'); setTimeout(() => b1.classList.add('hidden'), 3500); }
+          if (b2) { b2.classList.remove('hidden'); setTimeout(() => b2.classList.add('hidden'), 3500); }
+        }).catch(() => {
+          window.prompt('Copy email address:', MY_EMAIL);
+        });
+      } else {
         window.prompt('Copy email address:', MY_EMAIL);
-      });
+      }
     }
 
     function openContactModal() {
