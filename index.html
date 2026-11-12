@@ -980,16 +980,9 @@
       font-size: 13px;
       z-index: 10;
     }
-    @media (max-width: 640px) {
-      .retro-window {
-        position: fixed !important;
-        top: 48px !important;
-        left: 8px !important;
-        right: 8px !important;
-        width: auto !important;
-        max-height: calc(100% - 95px) !important;
-      }
-    }
+    /* Stage 3: panel mode is handled by the responsive block further down
+       (max-width 767px / max-height 600px) and mirrored by isCompact() in the
+       window manager, so the two can no longer disagree. */
 
     .retro-titlebar {
       background: linear-gradient(90deg, #000080, #1084d0);
@@ -1027,6 +1020,47 @@
       border-right: 2px solid #ffffff;
       border-bottom: 2px solid #ffffff;
       background: #ffffff;
+    }
+
+    /* ---------------------------------------------------------------------
+       Stage 3 window chrome: one control set for every app, a real maximize
+       state, and drag affordances. Colours are the existing AlvirOS greys.
+       --------------------------------------------------------------------- */
+    .win-controls { flex-shrink: 0; }
+    .win-ctl { flex-shrink: 0; }
+    .retro-window.is-maximized {
+      top: 4px !important;
+      left: 4px !important;
+      right: 4px !important;
+      bottom: 44px !important;
+      width: auto !important;
+      max-width: none !important;
+      max-height: none !important;
+      min-width: 0 !important;
+      box-shadow: none;
+    }
+    .retro-window.is-maximized > div:not(.retro-titlebar) {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none !important;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .retro-window.is-minimized { display: none !important; }
+    .retro-window.is-dragging { box-shadow: 4px 6px 22px rgba(0, 0, 0, 0.62); }
+    body.win-dragging,
+    body.win-dragging * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      cursor: grabbing !important;
+    }
+    #taskbarTabs .tab-minimized {
+      opacity: 0.72;
+      font-style: italic;
+      border-top-color: #808080;
+      border-left-color: #808080;
+      border-right-color: #ffffff;
+      border-bottom-color: #ffffff;
     }
 
     .retro-taskbar {
@@ -1734,6 +1768,7 @@
         height: 24px !important;
         flex-shrink: 0;
       }
+      .win-ctl-max { display: none !important; }
       .retro-window .p-3,
       .retro-window .p-4 { padding: 10px !important; }
 
@@ -2445,13 +2480,14 @@
 
         <!-- 1. PROJECTS EXPLORER WINDOW (UN-HIGHLIGHTED, CLEAN & DIGNIFIED) -->
         <div id="winProjects" class="retro-window top-6 left-28 sm:left-32 w-[580px] max-w-[94vw]" style="display: none;">
-          <div class="retro-titlebar" onmousedown="startDrag(event, 'winProjects')">
+          <div class="retro-titlebar" data-window="winProjects" onpointerdown="startDrag(event, 'winProjects')">
             <div class="flex items-center gap-1.5">
               <span>📁</span> <span>C:\Alvir\Projects\</span>
             </div>
-            <div class="flex items-center gap-1">
-              <button class="retro-btn" onclick="minimizeWindow('winProjects')">_</button>
-              <button class="retro-btn" onclick="closeWindow('winProjects')">✕</button>
+            <div class="flex items-center gap-1 win-controls">
+              <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winProjects')"><span aria-hidden="true">_</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winProjects')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winProjects')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
           <div class="p-3 bg-white retro-inward-box m-1 max-h-[500px] overflow-y-auto retro-scroll space-y-3.5">
@@ -2576,13 +2612,14 @@
 
         <!-- 2. FOUNDRY LAB RESEARCH PDF WINDOW -->
         <div id="winResearch" class="retro-window top-10 left-20 sm:left-36 w-[560px] max-w-[94vw]" style="display: none;">
-          <div class="retro-titlebar" onmousedown="startDrag(event, 'winResearch')">
+          <div class="retro-titlebar" data-window="winResearch" onpointerdown="startDrag(event, 'winResearch')">
             <div class="flex items-center gap-1.5">
               <span>🔬</span> <span>Acrobat Reader — FoundryLab_Research.pdf</span>
             </div>
-            <div class="flex items-center gap-1">
-              <button class="retro-btn" onclick="minimizeWindow('winResearch')">_</button>
-              <button class="retro-btn" onclick="closeWindow('winResearch')">✕</button>
+            <div class="flex items-center gap-1 win-controls">
+              <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winResearch')"><span aria-hidden="true">_</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winResearch')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winResearch')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
           <div class="p-4 bg-white retro-inward-box m-1 max-h-[480px] overflow-y-auto retro-scroll space-y-4 text-slate-800 font-serif">
@@ -2614,13 +2651,14 @@
 
         <!-- 3. EDUCATION TEXT WINDOW -->
         <div id="winEducation" class="retro-window top-12 left-16 sm:left-40 w-[480px] max-w-[94vw]" style="display: none;">
-          <div class="retro-titlebar" onmousedown="startDrag(event, 'winEducation')">
+          <div class="retro-titlebar" data-window="winEducation" onpointerdown="startDrag(event, 'winEducation')">
             <div class="flex items-center gap-1.5">
               <span>🎓</span> <span>Notepad — IIUC_Education.txt</span>
             </div>
-            <div class="flex items-center gap-1">
-              <button class="retro-btn" onclick="minimizeWindow('winEducation')">_</button>
-              <button class="retro-btn" onclick="closeWindow('winEducation')">✕</button>
+            <div class="flex items-center gap-1 win-controls">
+              <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winEducation')"><span aria-hidden="true">_</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winEducation')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winEducation')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
           <div class="p-3 bg-white retro-inward-box m-1 font-mono text-xs text-slate-800 leading-relaxed max-h-[420px] overflow-y-auto">
@@ -2648,13 +2686,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
         <!-- 4. INTERACTIVE RETRO TERMINAL -->
         <div id="winTerminal" class="retro-window top-14 left-10 sm:left-32 w-[580px] max-w-[94vw]" style="display: none;">
-          <div class="retro-titlebar" onmousedown="startDrag(event, 'winTerminal')">
+          <div class="retro-titlebar" data-window="winTerminal" onpointerdown="startDrag(event, 'winTerminal')">
             <div class="flex items-center gap-1.5">
               <span>📟</span> <span>MS-DOS Prompt — [alvir@workstation]</span>
             </div>
-            <div class="flex items-center gap-1">
-              <button class="retro-btn" onclick="minimizeWindow('winTerminal')">_</button>
-              <button class="retro-btn" onclick="closeWindow('winTerminal')">✕</button>
+            <div class="flex items-center gap-1 win-controls">
+              <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winTerminal')"><span aria-hidden="true">_</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winTerminal')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winTerminal')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
           <div id="terminalBody" class="p-3 bg-[#0c1017] text-emerald-400 font-mono text-xs max-h-[360px] overflow-y-auto retro-scroll" onclick="document.getElementById('termInput').focus()">
@@ -2672,13 +2711,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
         <!-- 5. CONTACT WINDOW WITH INVISIBLE / CLICK TO REVEAL EMAIL -->
         <div id="winContact" class="retro-window top-16 left-8 sm:left-48 w-[450px] max-w-[94vw]" style="display: none;">
-          <div class="retro-titlebar" onmousedown="startDrag(event, 'winContact')">
+          <div class="retro-titlebar" data-window="winContact" onpointerdown="startDrag(event, 'winContact')">
             <div class="flex items-center gap-1.5">
               <span>💌</span> <span>Outlook Express — Contact Alvir</span>
             </div>
-            <div class="flex items-center gap-1">
-              <button class="retro-btn" onclick="minimizeWindow('winContact')">_</button>
-              <button class="retro-btn" onclick="closeWindow('winContact')">✕</button>
+            <div class="flex items-center gap-1 win-controls">
+              <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winContact')"><span aria-hidden="true">_</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winContact')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winContact')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
           <div class="p-3 bg-[#c0c0c0] space-y-3">
@@ -2730,13 +2770,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
         <!-- 6. ALVIRAMP MUSIC PLAYER -->
         <div id="winPlayer" class="retro-window top-12 right-6 sm:right-12 w-[340px] max-w-[94vw]" style="display: none;">
-          <div class="retro-titlebar" onmousedown="startDrag(event, 'winPlayer')">
+          <div class="retro-titlebar" data-window="winPlayer" onpointerdown="startDrag(event, 'winPlayer')">
             <div class="flex items-center gap-1.5">
               <span>🎵</span> <span>AlvirAmp v2.0 — Custom Audio Player</span>
             </div>
-            <div class="flex items-center gap-1">
-              <button class="retro-btn" onclick="minimizeWindow('winPlayer')">_</button>
-              <button class="retro-btn" onclick="closeWindow('winPlayer')">✕</button>
+            <div class="flex items-center gap-1 win-controls">
+              <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winPlayer')"><span aria-hidden="true">_</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winPlayer')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winPlayer')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
           <div class="p-3 bg-[#1e2025] text-green-400 font-mono text-xs space-y-2.5">
@@ -2774,13 +2815,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
         <!-- 7. MINESWEEPER -->
         <div id="winMinesweeper" class="retro-window top-10 left-24 sm:left-48 w-[250px]" style="display: none;">
-          <div class="retro-titlebar" onmousedown="startDrag(event, 'winMinesweeper')">
+          <div class="retro-titlebar" data-window="winMinesweeper" onpointerdown="startDrag(event, 'winMinesweeper')">
             <div class="flex items-center gap-1.5">
               <span>💣</span> <span>Minesweeper</span>
             </div>
-            <div class="flex items-center gap-1">
-              <button class="retro-btn" onclick="minimizeWindow('winMinesweeper')">_</button>
-              <button class="retro-btn" onclick="closeWindow('winMinesweeper')">✕</button>
+            <div class="flex items-center gap-1 win-controls">
+              <button type="button" class="retro-btn win-ctl win-ctl-min" title="Minimize" aria-label="Minimize" onclick="minimizeWindow('winMinesweeper')"><span aria-hidden="true">_</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-max" title="Maximize" aria-label="Maximize" aria-pressed="false" onclick="toggleMaximize('winMinesweeper')"><span aria-hidden="true">□</span></button>
+              <button type="button" class="retro-btn win-ctl win-ctl-close" title="Close" aria-label="Close" onclick="closeWindow('winMinesweeper')"><span aria-hidden="true">✕</span></button>
             </div>
           </div>
           <div class="p-2 bg-[#c0c0c0] flex flex-col items-center">
@@ -4210,28 +4252,23 @@ Duration: 2022 – Present (6th Semester)<br><br>
        ===================================================================== */
     let highestZ = 30;
 
-    window.openWindow = function(id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.style.display = 'flex';
-      highestZ += 2;
-      el.style.zIndex = highestZ;
-      updateTaskbarTabs();
-    };
+    const WIN_ORDER = ['winProjects', 'winResearch', 'winEducation', 'winTerminal', 'winContact', 'winPlayer', 'winMinesweeper'];
 
-    window.closeWindow = function(id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.style.display = 'none';
-      updateTaskbarTabs();
+    /* Home positions mirror the original Tailwind anchors (sm: variants). The
+       cascade only steps away from home when another window already sits there,
+       so the AlvirOS layout still looks like itself on first open. */
+    const HOME_POS = {
+      winProjects:    { x: 128, y: 24 },
+      winResearch:    { x: 144, y: 40 },
+      winEducation:   { x: 160, y: 48 },
+      winTerminal:    { x: 128, y: 56 },
+      winContact:     { x: 192, y: 64 },
+      winPlayer:      { x: null, y: 48 }, /* originally right-anchored */
+      winMinesweeper: { x: 192, y: 40 }
     };
-
-    window.minimizeWindow = function(id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.style.display = el.style.display === 'none' ? 'flex' : 'none';
-      updateTaskbarTabs();
-    };
+    const CASCADE_X = 28;
+    const CASCADE_Y = 26;
+    const EDGE = 6;
 
     const windowMeta = {
       winProjects: { title: 'Projects', icon: '📁' },
@@ -4243,48 +4280,357 @@ Duration: 2022 – Present (6th Semester)<br><br>
       winMinesweeper: { title: 'Mines', icon: '💣' }
     };
 
-    function updateTaskbarTabs() {
-      const bar = document.getElementById('taskbarTabs');
-      bar.innerHTML = '';
-      for (const [id, meta] of Object.entries(windowMeta)) {
-        const win = document.getElementById(id);
-        if (win && win.style.display !== 'none') {
-          const btn = document.createElement('button');
-          btn.className = 'px-2.5 py-1 bg-[#c0c0c0] border-t-2 border-l-2 border-white border-r-2 border-b-2 border-black text-[11px] font-bold text-black flex items-center gap-1 active:bg-[#a0a0a0]';
-          btn.innerHTML = `<span>${meta.icon}</span><span>${meta.title}</span>`;
-          btn.onclick = () => {
-            highestZ += 2;
-            win.style.zIndex = highestZ;
-          };
-          bar.appendChild(btn);
+    function crtEl() { return document.querySelector('.crt-screen'); }
+
+    /* Compact (panel) mode mirrors the responsive stylesheet breakpoint exactly,
+       so CSS and script can never disagree about when windows are full-panel. */
+    function isCompact() {
+      return window.innerWidth <= 767 || window.innerHeight <= 600;
+    }
+
+    function workArea() {
+      const crt = crtEl();
+      if (!crt) return { w: window.innerWidth, h: window.innerHeight };
+      const r = crt.getBoundingClientRect();
+      const bar = crt.querySelector('.retro-taskbar');
+      const barH = bar ? (bar.getBoundingClientRect().height || 38) : 38;
+      return {
+        w: r.width || window.innerWidth,
+        h: Math.max(160, (r.height || window.innerHeight) - barH)
+      };
+    }
+
+    function windowOpen(el) {
+      return !!el && el.style.display !== 'none' && !el.classList.contains('is-minimized');
+    }
+
+    function windowBox(el) {
+      const crt = crtEl();
+      const base = crt ? crt.getBoundingClientRect() : { left: 0, top: 0 };
+      const r = el.getBoundingClientRect();
+      const w = r.width || el.offsetWidth || 0;
+      const h = r.height || el.offsetHeight || 0;
+      return { x: r.left - base.left, y: r.top - base.top, w: w, h: h };
+    }
+
+    function boxesOverlap(a, b) {
+      return a.x < b.x + b.w + EDGE && a.x + a.w + EDGE > b.x &&
+             a.y < b.y + b.h + EDGE && a.y + a.h + EDGE > b.y;
+    }
+
+    function otherBoxes(id) {
+      return WIN_ORDER
+        .filter(other => other !== id)
+        .map(other => document.getElementById(other))
+        .filter(windowOpen)
+        .map(windowBox);
+    }
+
+    function overlapArea(a, b) {
+      const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      return ox > 0 && oy > 0 ? ox * oy : 0;
+    }
+
+    /* Placement: keep the window's original home anchor, and only move it when
+       that spot is already taken. Candidate spots are scanned on a 16px grid,
+       nearest-to-home first, so a new window lands in clear space instead of
+       stacking on top of an open one. If the panel is too crowded for a clean
+       spot, the least-overlapping one wins - never a pile of identical rects. */
+    function placeWindow(el, id) {
+      if (!el || isCompact()) return;
+      const wa = workArea();
+      const w = el.offsetWidth || el.getBoundingClientRect().width || 0;
+      const h = el.offsetHeight || el.getBoundingClientRect().height || 0;
+      const home = HOME_POS[id] || { x: 24, y: 24 };
+      const maxX = Math.max(EDGE, wa.w - w - EDGE);
+      const maxY = Math.max(EDGE, wa.h - h - EDGE);
+      const homeX = Math.min(home.x === null ? Math.max(EDGE, wa.w - 48 - w) : home.x, maxX);
+      const homeY = Math.min(home.y, maxY);
+      const others = otherBoxes(id);
+      let spot = { x: homeX, y: homeY };
+
+      if (others.length) {
+        const taken = new Set(others.map(o => Math.round(o.x) + ',' + Math.round(o.y)));
+        const STEP = 16;
+        let free = null, freeD = Infinity;
+        let loose = null, looseOverlap = Infinity, looseD = Infinity;
+        for (let y = EDGE; y <= maxY + 0.5; y += STEP) {
+          for (let x = EDGE; x <= maxX + 0.5; x += STEP) {
+            if (taken.has(x + ',' + y)) continue;
+            const box = { x: x, y: y, w: w, h: h };
+            let overlap = 0;
+            for (let i = 0; i < others.length; i++) overlap += overlapArea(box, others[i]);
+            const d = (x - homeX) * (x - homeX) + (y - homeY) * (y - homeY);
+            if (overlap === 0) {
+              if (!others.some(other => boxesOverlap(box, other)) && d < freeD) { freeD = d; free = { x: x, y: y }; }
+            } else if (overlap < looseOverlap) {
+              looseOverlap = overlap; looseD = d; loose = { x: x, y: y };
+            } else if (overlap === looseOverlap && d < looseD) {
+              looseD = d; loose = { x: x, y: y };
+            }
+          }
         }
+        spot = free || loose || spot;
+      }
+
+      el.style.left = Math.round(spot.x) + 'px';
+      el.style.top = Math.round(spot.y) + 'px';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+    }
+
+    function clampWindow(el, id) {
+      if (!el || isCompact() || el.classList.contains('is-maximized')) return;
+      const wa = workArea();
+      const box = windowBox(el);
+      const w = box.w || el.offsetWidth || 0;
+      const h = box.h || el.offsetHeight || 0;
+      let x = box.x, y = box.y, moved = false;
+      if (x < EDGE) { x = EDGE; moved = true; }
+      if (y < EDGE) { y = EDGE; moved = true; }
+      if (x + w > wa.w - EDGE) { x = Math.max(EDGE, wa.w - w - EDGE); moved = true; }
+      if (y + h > wa.h - EDGE) { y = Math.max(EDGE, wa.h - h - EDGE); moved = true; }
+      if (moved) {
+        el.style.left = Math.round(x) + 'px';
+        el.style.top = Math.round(y) + 'px';
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
       }
     }
 
-    let activeDragWin = null;
-    let dragOffsetX = 0, dragOffsetY = 0;
+    function syncWindowChrome(el) {
+      const bar = el.querySelector('.retro-titlebar');
+      const maxBtn = bar && bar.querySelector('.win-ctl-max');
+      if (!maxBtn) return;
+      const maxed = el.classList.contains('is-maximized');
+      maxBtn.innerHTML = '<span aria-hidden="true">' + (maxed ? '❐' : '□') + '</span>';
+      maxBtn.title = maxed ? 'Restore' : 'Maximize';
+      maxBtn.setAttribute('aria-label', maxBtn.title);
+      maxBtn.setAttribute('aria-pressed', maxed ? 'true' : 'false');
+    }
 
-    window.startDrag = function(e, winId) {
-      if (window.innerWidth < 640) return;
-      activeDragWin = document.getElementById(winId);
-      if (!activeDragWin) return;
+    function updateTaskbarTabs() {
+      const bar = document.getElementById('taskbarTabs');
+      if (!bar) return;
+      bar.innerHTML = '';
+      for (const [id, meta] of Object.entries(windowMeta)) {
+        const win = document.getElementById(id);
+        if (!win || win.style.display === 'none') continue;
+        const minimized = win.classList.contains('is-minimized');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset.window = id;
+        btn.className = 'px-2.5 py-1 bg-[#c0c0c0] border-t-2 border-l-2 border-white border-r-2 border-b-2 border-black text-[11px] font-bold text-black flex items-center gap-1 active:bg-[#a0a0a0]' +
+          (minimized ? ' tab-minimized' : '');
+        btn.innerHTML = '<span>' + meta.icon + '</span><span>' + meta.title + '</span>';
+        btn.setAttribute('aria-label', meta.title + (minimized ? ' (minimized)' : ''));
+        btn.onclick = function () {
+          if (win.classList.contains('is-minimized')) window.restoreWindow(id);
+          else window.focusWindow(id);
+        };
+        bar.appendChild(btn);
+      }
+    }
+
+    window.focusWindow = function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
       highestZ += 2;
-      activeDragWin.style.zIndex = highestZ;
-      const rect = activeDragWin.getBoundingClientRect();
-      dragOffsetX = e.clientX - rect.left;
-      dragOffsetY = e.clientY - rect.top;
+      el.style.zIndex = highestZ;
     };
 
-    window.addEventListener('mousemove', (e) => {
-      if (activeDragWin) {
-        const crt = document.querySelector('.crt-screen').getBoundingClientRect();
-        let newX = e.clientX - crt.left - dragOffsetX;
-        let newY = e.clientY - crt.top - dragOffsetY;
-        activeDragWin.style.left = `${Math.max(5, Math.min(crt.width - 200, newX))}px`;
-        activeDragWin.style.top = `${Math.max(5, Math.min(crt.height - 80, newY))}px`;
+    window.openWindow = function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const wasOpen = windowOpen(el);
+      el.style.display = 'flex';
+      el.classList.remove('is-minimized');
+      if (isCompact()) {
+        el.classList.remove('is-maximized');
+      } else if (!wasOpen && !el.classList.contains('is-maximized')) {
+        placeWindow(el, id);
       }
-    });
-    window.addEventListener('mouseup', () => { activeDragWin = null; });
+      window.focusWindow(id);
+      syncWindowChrome(el);
+      updateTaskbarTabs();
+    };
+
+    window.closeWindow = function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = 'none';
+      el.classList.remove('is-minimized');
+      updateTaskbarTabs();
+    };
+
+    window.restoreWindow = function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = 'flex';
+      el.classList.remove('is-minimized');
+      window.focusWindow(id);
+      updateTaskbarTabs();
+    };
+
+    window.minimizeWindow = function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (windowOpen(el)) el.classList.add('is-minimized');
+      else window.restoreWindow(id);
+      updateTaskbarTabs();
+    };
+
+    window.toggleMaximize = function (id) {
+      const el = document.getElementById(id);
+      if (!el || isCompact()) return;
+      if (el.classList.contains('is-maximized')) {
+        el.classList.remove('is-maximized');
+        const saved = (el.dataset.floatPos || '').split(',').map(Number);
+        if (saved.length === 2 && isFinite(saved[0]) && isFinite(saved[1])) {
+          el.style.left = Math.round(saved[0]) + 'px';
+          el.style.top = Math.round(saved[1]) + 'px';
+          el.style.right = 'auto';
+          el.style.bottom = 'auto';
+        } else {
+          placeWindow(el, id);
+        }
+      } else {
+        const box = windowBox(el);
+        el.dataset.floatPos = Math.round(box.x) + ',' + Math.round(box.y);
+        el.classList.add('is-maximized');
+        el.style.right = '';
+        el.style.bottom = '';
+      }
+      window.focusWindow(id);
+      syncWindowChrome(el);
+    };
+
+    /* ------------------------------------------------------------------
+       Pointer-based dragging: mouse, touch and pen share one code path.
+       ------------------------------------------------------------------ */
+    let dragState = null;
+
+    function pointerPoint(e) {
+      if (e.touches && e.touches.length) return e.touches[0];
+      return e;
+    }
+
+    window.startDrag = function (e, winId) {
+      if (!e) return;
+      if (e.target && e.target.closest && e.target.closest('button, a, input, select, textarea')) return;
+      if (isCompact()) return;
+      const el = document.getElementById(winId);
+      if (!el || el.style.display === 'none' || el.classList.contains('is-minimized') || el.classList.contains('is-maximized')) return;
+      if (e.pointerType === 'mouse' && typeof e.button === 'number' && e.button > 0) return;
+      const crt = crtEl();
+      if (!crt) return;
+      const p = pointerPoint(e);
+      const base = crt.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const w = r.width || el.offsetWidth;
+      const h = r.height || el.offsetHeight;
+      dragState = {
+        el: el,
+        id: winId,
+        pointerId: (e.pointerId == null ? null : e.pointerId),
+        dx: (p.clientX || 0) - r.left,
+        dy: (p.clientY || 0) - r.top,
+        w: w,
+        h: h
+      };
+      el.style.left = Math.round(r.left - base.left) + 'px';
+      el.style.top = Math.round(r.top - base.top) + 'px';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      if (w) el.style.width = Math.round(w) + 'px';
+      window.focusWindow(winId);
+      if (e.currentTarget && e.currentTarget.setPointerCapture && dragState.pointerId !== null) {
+        try { e.currentTarget.setPointerCapture(dragState.pointerId); } catch (err) { /* older engines */ }
+      }
+      document.body.classList.add('win-dragging');
+      el.classList.add('is-dragging');
+      if (e.cancelable) e.preventDefault();
+    };
+
+    function moveDrag(e) {
+      if (!dragState) return;
+      if (dragState.pointerId !== null && e.pointerId != null && e.pointerId !== dragState.pointerId) return;
+      const crt = crtEl();
+      if (!crt) return;
+      const base = crt.getBoundingClientRect();
+      const wa = workArea();
+      const p = pointerPoint(e);
+      const maxX = Math.max(4, wa.w - dragState.w - 4);
+      const maxY = Math.max(4, wa.h - dragState.h - 4);
+      const x = Math.max(4, Math.min((p.clientX || 0) - base.left - dragState.dx, maxX));
+      const y = Math.max(4, Math.min((p.clientY || 0) - base.top - dragState.dy, maxY));
+      dragState.el.style.left = Math.round(x) + 'px';
+      dragState.el.style.top = Math.round(y) + 'px';
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function endDrag() {
+      if (!dragState) return;
+      dragState.el.classList.remove('is-dragging');
+      dragState.el.dataset.userPlaced = '1';
+      dragState = null;
+      document.body.classList.remove('win-dragging');
+    }
+
+    window.addEventListener('pointermove', moveDrag, { passive: false });
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+
+    /* Fallback for engines without Pointer Events (old iOS Safari, old Edge). */
+    if (!window.PointerEvent) {
+      const touchOnly = 'ontouchstart' in window;
+      document.querySelectorAll('.retro-titlebar[data-window]').forEach(bar => {
+        bar.addEventListener(
+          touchOnly ? 'touchstart' : 'mousedown',
+          e => window.startDrag(e, bar.getAttribute('data-window')),
+          { passive: false }
+        );
+      });
+      window.addEventListener(touchOnly ? 'touchmove' : 'mousemove', e => { if (dragState) moveDrag(e); }, { passive: false });
+      window.addEventListener(touchOnly ? 'touchend' : 'mouseup', endDrag);
+      window.addEventListener(touchOnly ? 'touchcancel' : 'blur', endDrag);
+    }
+
+    /* Keep every window usable when the panel changes shape (rotation, resize). */
+    let wasCompact = null;
+
+    function applyLayoutMode() {
+      const compact = isCompact();
+      const leavingCompact = wasCompact === true && !compact;
+      wasCompact = compact;
+      const crt = crtEl();
+      if (crt) crt.classList.toggle('crt-compact', compact);
+      WIN_ORDER.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (compact) {
+          if (el.classList.contains('is-maximized')) {
+            el.dataset.wasMaximized = '1';
+            el.classList.remove('is-maximized');
+          }
+        } else if (windowOpen(el)) {
+          if (el.dataset.wasMaximized === '1') {
+            delete el.dataset.wasMaximized;
+            el.classList.add('is-maximized');
+          } else if (!el.classList.contains('is-maximized')) {
+            /* A window that lived through panel mode has no floating rect yet. */
+            if (leavingCompact && !el.dataset.floatPos && !el.dataset.userPlaced) placeWindow(el, id);
+            else clampWindow(el, id);
+          }
+        }
+        syncWindowChrome(el);
+      });
+    }
+
+    window.addEventListener('resize', applyLayoutMode);
+    window.addEventListener('orientationchange', () => setTimeout(applyLayoutMode, 150));
+    applyLayoutMode();
 
     window.toggleStartMenu = function() {
       const menu = document.getElementById('crtStartMenu');
