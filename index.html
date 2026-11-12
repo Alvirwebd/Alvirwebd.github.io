@@ -2400,6 +2400,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
     const CAM_MONITOR_POS = new THREE.Vector3(0, 0.65, 1.55);
     const CAM_MONITOR_TARGET = new THREE.Vector3(0, 0.65, 0.1);
 
+    let isAtWorkstation = false;
+    let cameraLerpProgress = 1;
+    let camStartPos = CAM_ROOM_POS.clone();
+    let camEndPos = CAM_ROOM_POS.clone();
+    let camStartTarget = CAM_ROOM_TARGET.clone();
+    let camEndTarget = CAM_ROOM_TARGET.clone();
+
     function updateCameraViewport() {
       const aspect = window.innerWidth / window.innerHeight;
       camera.aspect = aspect;
@@ -2429,11 +2436,9 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
       camera.updateProjectionMatrix();
 
-      if (typeof isAtWorkstation === 'undefined' || !isAtWorkstation) {
-        if (typeof camEndPos !== 'undefined') {
-          camEndPos.copy(CAM_ROOM_POS);
-          camEndTarget.copy(CAM_ROOM_TARGET);
-        }
+      if (!isAtWorkstation) {
+        if (camEndPos) camEndPos.copy(CAM_ROOM_POS);
+        if (camEndTarget) camEndTarget.copy(CAM_ROOM_TARGET);
         camera.position.copy(CAM_ROOM_POS);
         camera.lookAt(CAM_ROOM_TARGET);
       }
@@ -2441,7 +2446,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
     updateCameraViewport();
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'default' });
+    } catch (e) {
+      renderer = new THREE.WebGLRenderer({ antialias: false });
+    }
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -2651,13 +2661,6 @@ Duration: 2022 – Present (6th Semester)<br><br>
     /* =====================================================================
        3. CAMERA LERP & INTERACTION
        ===================================================================== */
-    let isAtWorkstation = false;
-    let cameraLerpProgress = 1;
-    let camStartPos = camera.position.clone();
-    let camEndPos = CAM_ROOM_POS.clone();
-    let camStartTarget = CAM_ROOM_TARGET.clone();
-    let camEndTarget = CAM_ROOM_TARGET.clone();
-
     const mouse = { x: 0, y: 0 };
     window.addEventListener('mousemove', (e) => {
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
