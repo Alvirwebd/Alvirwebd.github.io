@@ -533,14 +533,14 @@ async function runRealIntegrationTests() {
     assert(count429 === 5, `Real D1 Concurrency: Exactly 5 concurrent submissions rate-limited with HTTP 429 (got ${count429})`);
   }
 
-  // 7. Stage 5.7: Real SQLite Visitor IP Tracking & Anonymous Analytics
+  // 7. Stage 5.7 & 5.7.1: Real SQLite Visitor IP Tracking, Anonymous Analytics & Privacy Hardening
   {
-    console.log('\n--- Running Stage 5.7 Analytics & IP Tracking Integration Tests ---');
+    console.log('\n--- Running Stage 5.7.1 Analytics & IP Hardening Integration Tests ---');
     const realIp = '198.51.100.42';
     const fakeIp = '10.0.0.99';
     const visitorAid = 'aid_test_visitor_alpha_99';
 
-    // 7a. Visit recording & CF-Connecting-IP capture (ignoring spoofed headers)
+    // 7a. Visit recording & CF-Connecting-IP capture (User-Agent excluded, spoofed headers ignored)
     const visitReq1 = new Request('http://localhost/api/analytics/visit', {
       method: 'POST',
       headers: {
@@ -554,18 +554,24 @@ async function runRealIntegrationTests() {
     });
     const visitRes1 = await worker.fetch(visitReq1, env);
     assert(visitRes1.status === 200, 'Real D1 Analytics: Visit with CF-Connecting-IP accepted (HTTP 200)');
+    const visitJson1 = await visitRes1.json();
+    assert(visitJson1.ip_stored === true, 'Real D1 Analytics: Valid CF-Connecting-IP triggers ip_stored: true');
 
     // Verify raw IP record in SQLite
-    const ipRecord = realDb.sqlite.prepare('SELECT ip, path, user_agent FROM visitor_ip_records WHERE ip = ?').get(realIp);
+    const ipRecord = realDb.sqlite.prepare('SELECT ip, path, created_at FROM visitor_ip_records WHERE ip = ?').get(realIp);
     assert(ipRecord && ipRecord.ip === realIp && ipRecord.path === '/portfolio',
       'Real D1 Analytics: Captured CF-Connecting-IP stored in visitor_ip_records');
+
+    // Verify user_agent column does NOT exist in visitor_ip_records schema
+    const ipColumns = realDb.sqlite.prepare("PRAGMA table_info(visitor_ip_records)").all().map(c => c.name);
+    assert(!ipColumns.includes('user_agent'),
+      'Real D1 Analytics: user_agent column completely removed from visitor_ip_records schema');
 
     // Verify spoofed IP was NOT stored
     const fakeRecord = realDb.sqlite.prepare('SELECT id FROM visitor_ip_records WHERE ip = ?').get(fakeIp);
     assert(!fakeRecord, 'Real D1 Analytics: Spoofed IP headers (X-Forwarded-For/X-Real-IP) cannot override CF-Connecting-IP');
 
     // Verify raw IP record contains ZERO thoughts or visitor tokens
-    const ipColumns = realDb.sqlite.prepare("PRAGMA table_info(visitor_ip_records)").all().map(c => c.name);
     assert(!ipColumns.includes('token_hash') && !ipColumns.includes('text'),
       'Real D1 Analytics: visitor_ip_records has zero guestbook columns (strict data decoupling)');
 
@@ -579,7 +585,58 @@ async function runRealIntegrationTests() {
     assert(!anonColumns.includes('ip') && !anonColumns.includes('client_ip'),
       'Real D1 Analytics: anonymous_visits table has zero IP address columns');
 
-    // 7b. Returning visitor detection with same AID
+    // 7b. Missing and invalid IP headers testing (Must NEVER store fake 127.0.0.1)
+    const countBeforeMissing = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM visitor_ip_records').get().c;
+
+    // Missing CF-Connecting-IP entirely
+    const missingIpReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aid: 'aid_missing_ip_user', path: '/contact' })
+    });
+    const missingIpRes = await worker.fetch(missingIpReq, env);
+    const missingJson = await missingIpRes.json();
+    assert(missingIpRes.status === 200, 'Real D1 Analytics: Visit without CF-Connecting-IP accepted (HTTP 200)');
+    assert(missingJson.ip_stored === false, 'Real D1 Analytics: Missing CF-Connecting-IP skips IP storage (ip_stored: false)');
+
+    const countAfterMissing = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM visitor_ip_records').get().c;
+    assert(countBeforeMissing === countAfterMissing,
+      'Real D1 Analytics: Missing CF-Connecting-IP creates zero records in visitor_ip_records');
+
+    const fakeLocalhost = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '127.0.0.1'").get();
+    assert(!fakeLocalhost, 'Real D1 Analytics: Never use 127.0.0.1 fallback when IP header is missing');
+
+    // Invalid IP header format
+    const invalidIpReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': 'malformed.ip.value.999'
+      },
+      body: JSON.stringify({ aid: 'aid_invalid_ip_user', path: '/' })
+    });
+    const invalidIpRes = await worker.fetch(invalidIpReq, env);
+    const invalidJson = await invalidIpRes.json();
+    assert(invalidJson.ip_stored === false, 'Real D1 Analytics: Invalid IP format skips IP storage');
+
+    // Spoofed-only headers (no CF-Connecting-IP, but X-Forwarded-For present)
+    const spoofedOnlyReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': '203.0.113.99',
+        'X-Real-IP': '203.0.113.99'
+      },
+      body: JSON.stringify({ aid: 'aid_spoofed_user', path: '/' })
+    });
+    const spoofedOnlyRes = await worker.fetch(spoofedOnlyReq, env);
+    const spoofedJson = await spoofedOnlyRes.json();
+    assert(spoofedJson.ip_stored === false,
+      'Real D1 Analytics: Spoofed X-Forwarded-For cannot substitute for missing CF-Connecting-IP');
+    const spoofedInDb = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '203.0.113.99'").get();
+    assert(!spoofedInDb, 'Real D1 Analytics: Spoofed IP without CF-Connecting-IP was NOT stored');
+
+    // 7c. Returning visitor detection with same AID
     const visitReq2 = new Request('http://localhost/api/analytics/visit', {
       method: 'POST',
       headers: {
@@ -595,7 +652,7 @@ async function runRealIntegrationTests() {
     assert(anonVisit2 && anonVisit2.is_returning === 1,
       'Real D1 Analytics: Subsequent visit with same AID correctly marked as returning (is_returning = 1)');
 
-    // 7c. Non-guestbook visitor tracking
+    // 7d. Non-guestbook visitor tracking
     const thoughtsCountBefore = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM guestbook_thoughts').get().c;
     const lurkerAid = 'aid_lurker_visitor_no_thoughts';
     const lurkerReq = new Request('http://localhost/api/analytics/visit', {
@@ -608,7 +665,7 @@ async function runRealIntegrationTests() {
     assert(thoughtsCountBefore === thoughtsCountAfter,
       'Real D1 Analytics: Visitors who never submit thoughts are recorded in analytics without touching guestbook');
 
-    // 7d. Unauthorized owner access protections
+    // 7e. Unauthorized owner access protections
     const unauthAnalyticsReq = new Request('http://localhost/api/owner/analytics', { method: 'GET' });
     const unauthAnalyticsRes = await worker.fetch(unauthAnalyticsReq, env);
     assert(unauthAnalyticsRes.status === 401,
@@ -619,8 +676,16 @@ async function runRealIntegrationTests() {
     assert(unauthIpsRes.status === 401,
       'Real D1 Analytics: Unauthorized access to /api/owner/analytics/ips rejected with HTTP 401');
 
-    // 7e. Authenticated owner analytics retrieval
-    // Log owner in to get fresh session token
+    const unauthDeleteReq = new Request('http://localhost/api/owner/analytics/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true })
+    });
+    const unauthDeleteRes = await worker.fetch(unauthDeleteReq, env);
+    assert(unauthDeleteRes.status === 401,
+      'Real D1 Analytics: Unauthorized deletion request rejected with HTTP 401');
+
+    // 7f. Authenticated owner analytics retrieval & metric clarification
     const ownerLoginReq = new Request('http://localhost/api/owner/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -640,57 +705,110 @@ async function runRealIntegrationTests() {
       'Real D1 Analytics: Authenticated owner retrieves aggregated analytics (HTTP 200)');
     assert(analyticsData.overview && analyticsData.overview.total_visits >= 3,
       'Real D1 Analytics: Aggregated overview correctly calculates total visits');
-    assert(analyticsData.overview.unique_visitors >= 2,
-      'Real D1 Analytics: Aggregated overview correctly calculates unique visitors');
-    assert(analyticsData.overview.returning_visitors >= 1,
-      'Real D1 Analytics: Aggregated overview correctly calculates returning visitors');
+    assert(analyticsData.overview.estimated_unique_browsers !== undefined,
+      'Real D1 Analytics: Dashboard metric Estimated Unique Browsers is present');
+    assert(analyticsData.overview.estimated_unique_browsers >= 2,
+      'Real D1 Analytics: Aggregated overview correctly calculates unique browsers');
 
     // Verify aggregated analytics JSON contains ZERO IP addresses
     const analyticsJsonStr = JSON.stringify(analyticsData);
     assert(!analyticsJsonStr.includes('198.51.100') && !analyticsJsonStr.includes('203.0.113'),
       'Real D1 Analytics: Aggregated analytics response contains ZERO IP addresses');
 
-    // 7f. Authenticated owner raw IP records retrieval
-    const authIpsReq = new Request('http://localhost/api/owner/analytics/ips?limit=10', {
+    // 7g. Indefinite historical IP records preservation (No automatic 30-day deletion)
+    // Insert simulated 120-day-old and 45-day-old records directly into SQLite
+    realDb.sqlite.exec(`
+      INSERT INTO visitor_ip_records (ip, path, created_at)
+      VALUES ('192.0.2.120', '/ancient-page', datetime('now', '-120 days')),
+             ('192.0.2.45', '/older-page', datetime('now', '-45 days'));
+    `);
+
+    // Perform multiple ordinary analytics visits and owner requests
+    const regularVisitReq = new Request('http://localhost/api/analytics/visit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.77' },
+      body: JSON.stringify({ aid: 'aid_normal_routine_visitor', path: '/' })
+    });
+    await worker.fetch(regularVisitReq, env);
+    await worker.fetch(new Request('http://localhost/api/owner/analytics', {
+      headers: { 'Authorization': `Bearer ${ownerSessionToken}` }
+    }), env);
+
+    // Verify historical records remain intact indefinitely
+    const ancientRecord = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.120'").get();
+    const olderRecord = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.45'").get();
+    assert(ancientRecord && olderRecord,
+      'Real D1 Analytics: Historical IP records preserved indefinitely; ordinary requests never auto-delete');
+
+    // Authenticated owner raw IP records retrieval includes older records
+    const authIpsReq = new Request('http://localhost/api/owner/analytics/ips?limit=50', {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${ownerSessionToken}` }
     });
     const authIpsRes = await worker.fetch(authIpsReq, env);
     const ipsData = await authIpsRes.json();
-    assert(authIpsRes.status === 200 && Array.isArray(ipsData.records) && ipsData.records.length >= 3,
+    assert(authIpsRes.status === 200 && Array.isArray(ipsData.records),
       'Real D1 Analytics: Authenticated owner can query raw IP records via /api/owner/analytics/ips');
-    assert(ipsData.records.some(r => r.ip === realIp),
-      'Real D1 Analytics: Raw IP record matching captured CF-Connecting-IP returned in owner list');
+    assert(ipsData.records.some(r => r.ip === '192.0.2.120'),
+      'Real D1 Analytics: Historical 120-day-old record displayed in owner IP history');
+    assert(!ipsData.records.some(r => r.user_agent !== undefined),
+      'Real D1 Analytics: IP records response strictly excludes user_agent');
 
-    // 7g. Retention cleanup
-    // Insert simulated 35-day-old record directly into SQLite
-    realDb.sqlite.exec(`
-      INSERT INTO visitor_ip_records (ip, path, created_at)
-      VALUES ('192.0.2.222', '/old-page', datetime('now', '-35 days'));
-    `);
-    const oldExists = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.222'").get();
-    assert(oldExists, 'Real D1 Analytics: Simulated 35-day-old IP record inserted for retention test');
-
-    const cleanupReq = new Request('http://localhost/api/owner/analytics/cleanup', {
+    // 7h. Manual deletion requires explicit criteria (Automatic/empty deletion rejected)
+    const emptyDeleteReq = new Request('http://localhost/api/owner/analytics/delete', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${ownerSessionToken}`
-      },
-      body: JSON.stringify({ days: 30 })
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ownerSessionToken}` },
+      body: JSON.stringify({})
     });
-    const cleanupRes = await worker.fetch(cleanupReq, env);
-    const cleanupData = await cleanupRes.json();
-    assert(cleanupRes.status === 200 && cleanupData.purged >= 1,
-      'Real D1 Analytics: Retention cleanup purges records older than 30 days');
+    const emptyDeleteRes = await worker.fetch(emptyDeleteReq, env);
+    assert(emptyDeleteRes.status === 400,
+      'Real D1 Analytics: Manual deletion without explicit criteria rejected with HTTP 400');
 
-    const oldAfterCleanup = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.222'").get();
-    assert(!oldAfterCleanup, 'Real D1 Analytics: Expired IP record permanently deleted from database');
+    // Explicit manual owner deletion of records older than 90 days
+    const scopedDeleteReq = new Request('http://localhost/api/owner/analytics/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ownerSessionToken}` },
+      body: JSON.stringify({ days: 90 })
+    });
+    const scopedDeleteRes = await worker.fetch(scopedDeleteReq, env);
+    const scopedJson = await scopedDeleteRes.json();
+    assert(scopedDeleteRes.status === 200 && scopedJson.deleted >= 1,
+      'Real D1 Analytics: Explicit owner deletion with days parameter succeeds');
 
-    const recentStillExists = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = ?").get(realIp);
-    assert(recentStillExists, 'Real D1 Analytics: Recent IP records strictly preserved during retention cleanup');
+    const ancientAfterDelete = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.120'").get();
+    assert(!ancientAfterDelete, 'Real D1 Analytics: Explicitly deleted 120-day-old record purged');
 
-    // 7h. Analytics rate limiting (30 pings per 10 minutes)
+    const olderStillExists = realDb.sqlite.prepare("SELECT id FROM visitor_ip_records WHERE ip = '192.0.2.45'").get();
+    assert(olderStillExists, 'Real D1 Analytics: 45-day-old record preserved when deleting >90 days');
+
+    // 7i. Migration Verification Test (0002_remove_user_agent.sql)
+    // Create simulated legacy table with user_agent, populate with rows, run migration, verify schema and data
+    realDb.sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS legacy_test_ips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT NOT NULL,
+        path TEXT NOT NULL DEFAULT '/',
+        user_agent TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO legacy_test_ips (ip, path, user_agent) VALUES ('198.51.100.1', '/page1', 'OldAgent/1.0');
+    `);
+    const fs = await import('fs');
+    const path = await import('path');
+    const migrationSql = fs.readFileSync(path.join(__dirname, 'migrations', '0002_remove_user_agent.sql'), 'utf-8');
+    // Adapt table name for isolated test
+    const testMigrationSql = migrationSql
+      .replace(/visitor_ip_records_dg_tmp/g, 'legacy_test_ips_tmp')
+      .replace(/visitor_ip_records/g, 'legacy_test_ips')
+      .replace(/idx_visitor_ip_created_at/g, 'idx_legacy_test_ips_created_at');
+    realDb.sqlite.exec(testMigrationSql);
+
+    const migratedCols = realDb.sqlite.prepare("PRAGMA table_info(legacy_test_ips)").all().map(c => c.name);
+    assert(!migratedCols.includes('user_agent'), 'Real D1 Analytics: Migration safely removes user_agent column');
+    const migratedRow = realDb.sqlite.prepare("SELECT ip, path FROM legacy_test_ips WHERE ip = '198.51.100.1'").get();
+    assert(migratedRow && migratedRow.path === '/page1', 'Real D1 Analytics: Migration preserves all historical rows and paths');
+
+    // 7j. Analytics rate limiting (30 pings per 10 minutes)
     const floodIp = '203.0.113.199';
     let hitRateLimit = false;
     for (let i = 0; i < 32; i++) {
@@ -706,6 +824,216 @@ async function runRealIntegrationTests() {
       }
     }
     assert(hitRateLimit, 'Real D1 Analytics: Rapid analytics pings from same IP rate-limited with HTTP 429');
+  }
+
+  // 8. PR #25 Final Review: Fabricated IP Elimination & Owner IP History Pagination
+  {
+    console.log('\n--- Running PR #25 Review Corrections: IP Fallback & Pagination Tests ---');
+
+    // 8a. Rate Limiting on POST /api/thoughts with missing CF-Connecting-IP
+    // Verify that missing header uses 'missing_ip_anonymous' identity, is rate limited, and NEVER uses 127.0.0.1
+    let missingHeaderRateLimited = false;
+    for (let i = 0; i < 7; i++) {
+      const thoughtReq = new Request('http://localhost/api/thoughts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `Missing IP thought ${i}`, nickname: 'Anon' })
+      });
+      const thoughtRes = await worker.fetch(thoughtReq, env);
+      if (thoughtRes.status === 429) {
+        missingHeaderRateLimited = true;
+        break;
+      }
+    }
+    assert(missingHeaderRateLimited,
+      'PR #25 Rate Limit: Requests with missing CF-Connecting-IP are rate-limited on missing_ip_anonymous bucket');
+
+    // Confirm that 127.0.0.1 was NEVER hashed or stored for missing-IP requests
+    const encoder = new TextEncoder();
+    const hash127Buf = await crypto.subtle.digest('SHA-256', encoder.encode('visitor_127.0.0.1'));
+    const hash127Hex = Array.from(new Uint8Array(hash127Buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const fake127RateLimit = realDb.sqlite.prepare('SELECT ip_hash FROM rate_limits WHERE ip_hash = ?').get(hash127Hex);
+    assert(!fake127RateLimit,
+      'PR #25 Rate Limit: 127.0.0.1 is NEVER used as fallback or stored in rate_limits');
+
+    // Verify valid CF-Connecting-IP is not blocked by the anonymous bucket
+    const validIpSubmission = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': '198.51.100.201'
+      },
+      body: JSON.stringify({ text: 'Valid IP thought', nickname: 'Alice' })
+    });
+    const validIpRes = await worker.fetch(validIpSubmission, env);
+    assert(validIpRes.status === 201,
+      'PR #25 Rate Limit: Valid CF-Connecting-IP request succeeds independently of missing_ip_anonymous bucket');
+
+    // 8b. Owner Login Brute-Force Lockout with missing CF-Connecting-IP
+    // Send 5 failed attempts without CF-Connecting-IP
+    let missingIpLockout = false;
+    for (let i = 0; i < 6; i++) {
+      const loginReq = new Request('http://localhost/api/owner/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'wrong_secret_attempt' })
+      });
+      const loginRes = await worker.fetch(loginReq, env);
+      if (loginRes.status === 429) {
+        missingIpLockout = true;
+        break;
+      }
+    }
+    assert(missingIpLockout,
+      'PR #25 Lockout: Owner login with missing CF-Connecting-IP locks out after failed attempts on missing_ip_anonymous');
+
+    // Confirm that 127.0.0.1 was NEVER hashed or stored in owner_login_attempts
+    const hashOwner127Buf = await crypto.subtle.digest('SHA-256', encoder.encode('owner_127.0.0.1'));
+    const hashOwner127Hex = Array.from(new Uint8Array(hashOwner127Buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const fakeOwner127 = realDb.sqlite.prepare('SELECT ip_hash FROM owner_login_attempts WHERE ip_hash = ?').get(hashOwner127Hex);
+    assert(!fakeOwner127,
+      'PR #25 Lockout: 127.0.0.1 is NEVER used as fallback or stored in owner_login_attempts');
+
+    // Verify valid CF-Connecting-IP can still log in if credentials are correct
+    const validIpLogin = new Request('http://localhost/api/owner/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': '198.51.100.202'
+      },
+      body: JSON.stringify({ key: env.ADMIN_KEY })
+    });
+    const validLoginRes = await worker.fetch(validIpLogin, env);
+    assert(validLoginRes.status === 200,
+      'PR #25 Lockout: Valid CF-Connecting-IP owner login succeeds independently of anonymous lockout');
+    const validSessionToken = (await validLoginRes.json()).session_token;
+
+    // 8c. IP History Pagination (GET /api/owner/analytics/ips)
+    // Clear and insert exactly 45 deterministic records
+    realDb.sqlite.exec('DELETE FROM visitor_ip_records');
+    for (let i = 1; i <= 45; i++) {
+      realDb.sqlite.prepare(
+        "INSERT INTO visitor_ip_records (id, ip, path, created_at) VALUES (?, ?, ?, datetime('now', ?))"
+      ).run(i, `198.51.100.${i}`, `/page-${i}`, `-${45 - i} minutes`);
+    }
+
+    // Page 1 with limit=20
+    const p1Req = new Request('http://localhost/api/owner/analytics/ips?page=1&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const p1Res = await worker.fetch(p1Req, env);
+    const p1Data = await p1Res.json();
+    assert(p1Res.status === 200 && p1Data.success === true, 'PR #25 Pagination: Page 1 request succeeds (HTTP 200)');
+    assert(p1Data.records.length === 20, 'PR #25 Pagination: Page 1 returns exactly 20 records');
+    assert(p1Data.pagination.page === 1, 'PR #25 Pagination: Page 1 pagination.page === 1');
+    assert(p1Data.pagination.limit === 20, 'PR #25 Pagination: Page 1 pagination.limit === 20');
+    assert(p1Data.pagination.total === 45, 'PR #25 Pagination: Page 1 pagination.total === 45');
+    assert(p1Data.pagination.total_pages === 3, 'PR #25 Pagination: Page 1 pagination.total_pages === 3');
+    assert(p1Data.pagination.has_next === true, 'PR #25 Pagination: Page 1 has_next === true');
+    assert(p1Data.pagination.has_prev === false, 'PR #25 Pagination: Page 1 has_prev === false');
+    assert(p1Data.records[0].id === 45 && p1Data.records[19].id === 26,
+      'PR #25 Pagination: Page 1 correctly ordered id DESC (45 down to 26)');
+
+    // Page 2 with limit=20
+    const p2Req = new Request('http://localhost/api/owner/analytics/ips?page=2&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const p2Res = await worker.fetch(p2Req, env);
+    const p2Data = await p2Res.json();
+    assert(p2Data.records.length === 20, 'PR #25 Pagination: Page 2 returns exactly 20 records');
+    assert(p2Data.pagination.page === 2, 'PR #25 Pagination: Page 2 pagination.page === 2');
+    assert(p2Data.pagination.has_next === true, 'PR #25 Pagination: Page 2 has_next === true');
+    assert(p2Data.pagination.has_prev === true, 'PR #25 Pagination: Page 2 has_prev === true');
+    assert(p2Data.records[0].id === 25 && p2Data.records[19].id === 6,
+      'PR #25 Pagination: Page 2 correctly ordered id DESC (25 down to 6)');
+
+    // Page 3 (Last valid page with limit=20 for 45 records)
+    const p3Req = new Request('http://localhost/api/owner/analytics/ips?page=3&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const p3Res = await worker.fetch(p3Req, env);
+    const p3Data = await p3Res.json();
+    assert(p3Data.records.length === 5, 'PR #25 Pagination: Last valid page (page 3) returns remaining 5 records');
+    assert(p3Data.pagination.page === 3, 'PR #25 Pagination: Last valid page pagination.page === 3');
+    assert(p3Data.pagination.has_next === false, 'PR #25 Pagination: Last valid page has_next === false (disables Next button)');
+    assert(p3Data.pagination.has_prev === true, 'PR #25 Pagination: Last valid page has_prev === true (enables Prev button)');
+    assert(p3Data.records[0].id === 5 && p3Data.records[4].id === 1,
+      'PR #25 Pagination: Last valid page correctly ordered id DESC (5 down to 1)');
+
+    // 8d. Page beyond the last page (page=4 when total_pages=3)
+    const beyondReq = new Request('http://localhost/api/owner/analytics/ips?page=4&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const beyondRes = await worker.fetch(beyondReq, env);
+    const beyondData = await beyondRes.json();
+    assert(beyondRes.status === 200, 'PR #25 Clamping: Page beyond last page succeeds with HTTP 200');
+    assert(beyondData.pagination.page === 3, 'PR #25 Clamping: Requested page 4 clamped to total_pages (3)');
+    assert(beyondData.pagination.total_pages === 3, 'PR #25 Clamping: total_pages remains 3');
+    assert(beyondData.pagination.has_next === false, 'PR #25 Clamping: has_next is false after clamping to last page');
+    assert(beyondData.pagination.has_prev === true, 'PR #25 Clamping: has_prev is true after clamping to last page');
+    assert(beyondData.records.length === 5, 'PR #25 Clamping: Returns last page records instead of empty offset');
+    assert(beyondData.records[0].id === 5, 'PR #25 Clamping: Offset calculated AFTER clamping to valid page');
+
+    // 8e. Extremely large page number (page=999999)
+    const hugePageReq = new Request('http://localhost/api/owner/analytics/ips?page=999999&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const hugePageRes = await worker.fetch(hugePageReq, env);
+    const hugePageData = await hugePageRes.json();
+    assert(hugePageRes.status === 200, 'PR #25 Clamping: Extremely large page number returns HTTP 200');
+    assert(hugePageData.pagination.page === 3, 'PR #25 Clamping: Page 999999 clamped to total_pages (3)');
+    assert(hugePageData.pagination.has_next === false, 'PR #25 Clamping: has_next is false on clamped large page');
+    assert(hugePageData.pagination.has_prev === true, 'PR #25 Clamping: has_prev is true on clamped large page');
+    assert(hugePageData.records.length === 5, 'PR #25 Clamping: Records length matches last page');
+
+    // Bounds checking: limit > 100 clamped to 100, page < 1 clamped to 1
+    const clampReq = new Request('http://localhost/api/owner/analytics/ips?page=0&limit=999', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const clampRes = await worker.fetch(clampReq, env);
+    const clampData = await clampRes.json();
+    assert(clampData.pagination.page === 1, 'PR #25 Pagination: page <= 0 safely clamped to 1');
+    assert(clampData.pagination.limit === 100, 'PR #25 Pagination: limit > 100 safely clamped to 100');
+    assert(clampData.records.length === 45, 'PR #25 Pagination: Returns all 45 records within clamped limit of 100');
+
+    // 8f. Empty database edge-case handling
+    realDb.sqlite.exec('DELETE FROM visitor_ip_records');
+    const emptyCount = realDb.sqlite.prepare('SELECT COUNT(*) as c FROM visitor_ip_records').get().c;
+    assert(emptyCount === 0, 'PR #25 Empty DB: Database verified empty');
+
+    // Empty DB: page 1
+    const emptyP1Req = new Request('http://localhost/api/owner/analytics/ips?page=1&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const emptyP1Res = await worker.fetch(emptyP1Req, env);
+    const emptyP1Data = await emptyP1Res.json();
+    assert(emptyP1Res.status === 200 && emptyP1Data.success === true, 'PR #25 Empty DB: Returns HTTP 200');
+    assert(emptyP1Data.records.length === 0, 'PR #25 Empty DB: records is empty array');
+    assert(emptyP1Data.pagination.page === 1, 'PR #25 Empty DB: pagination.page === 1');
+    assert(emptyP1Data.pagination.total === 0, 'PR #25 Empty DB: pagination.total === 0');
+    assert(emptyP1Data.pagination.total_pages === 1, 'PR #25 Empty DB: pagination.total_pages === 1');
+    assert(emptyP1Data.pagination.has_next === false, 'PR #25 Empty DB: has_next === false');
+    assert(emptyP1Data.pagination.has_prev === false, 'PR #25 Empty DB: has_prev === false');
+
+    // Empty DB: out-of-bounds page=50
+    const emptyP50Req = new Request('http://localhost/api/owner/analytics/ips?page=50&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const emptyP50Res = await worker.fetch(emptyP50Req, env);
+    const emptyP50Data = await emptyP50Res.json();
+    assert(emptyP50Data.pagination.page === 1, 'PR #25 Empty DB: Out-of-bounds page clamped safely to 1');
+    assert(emptyP50Data.pagination.total_pages === 1, 'PR #25 Empty DB: total_pages remains 1');
+    assert(emptyP50Data.pagination.has_next === false, 'PR #25 Empty DB: has_next is false');
+    assert(emptyP50Data.pagination.has_prev === false, 'PR #25 Empty DB: has_prev is false');
+    assert(emptyP50Data.records.length === 0, 'PR #25 Empty DB: records is empty array');
+
+    // Empty DB: negative page=-10
+    const emptyNegReq = new Request('http://localhost/api/owner/analytics/ips?page=-10&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const emptyNegRes = await worker.fetch(emptyNegReq, env);
+    const emptyNegData = await emptyNegRes.json();
+    assert(emptyNegData.pagination.page === 1, 'PR #25 Empty DB: Negative page clamped safely to 1');
   }
 }
 

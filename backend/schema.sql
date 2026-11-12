@@ -35,12 +35,11 @@ CREATE TABLE IF NOT EXISTS owner_sessions (
 -- STAGE 5.7: VISITOR IP TRACKING & ANONYMOUS ANALYTICS
 -- ============================================================================
 
--- Raw Visitor IP Records (30-day default retention, owner-only access)
+-- Raw Visitor IP Records (Preserved indefinitely, owner-only manual deletion)
 CREATE TABLE IF NOT EXISTS visitor_ip_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ip TEXT NOT NULL,
   path TEXT NOT NULL DEFAULT '/',
-  user_agent TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
