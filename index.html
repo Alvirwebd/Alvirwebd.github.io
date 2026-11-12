@@ -1089,6 +1089,99 @@
     }
     .book-scroll::-webkit-scrollbar { width: 6px; }
     .book-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+    /* =====================================================================
+       MOBILE RESPONSIVENESS — iOS Safari & Android Chrome
+       ===================================================================== */
+
+    /* ---- canvas & safe-area ---- */
+    #canvas-container canvas { display: block; }
+
+    /* ---- Top bars: compact on small phones ---- */
+    @media (max-width: 600px) {
+      #roomHeader {
+        top: max(8px, env(safe-area-inset-top, 8px)) !important;
+        left: max(8px, env(safe-area-inset-left, 8px)) !important;
+        right: max(8px, env(safe-area-inset-right, 8px)) !important;
+      }
+      #roomFooter {
+        bottom: max(10px, calc(env(safe-area-inset-bottom, 0px) + 8px)) !important;
+        left: max(6px, env(safe-area-inset-left, 6px)) !important;
+        right: max(6px, env(safe-area-inset-right, 6px)) !important;
+      }
+      /* Slim down the name plate so it doesn't overflow */
+      #profilePlate {
+        padding: 5px 8px !important;
+        gap: 6px !important;
+      }
+      #profilePlate .hidden { display: none !important; }
+      /* Slim audio button */
+      #btnAudioToggle {
+        padding: 5px 8px !important;
+        gap: 5px !important;
+      }
+      /* In-room 3D floating beacons on mobile: compact, thumb-friendly, no overlap */
+      #notebookPill .paper-card {
+        padding: 6px 10px 6px 10px !important;
+        gap: 6px !important;
+        max-width: 160px !important;
+      }
+      /* Click-prompt beacon: positioned below CRT screen */
+      #clickPrompt { top: 50% !important; }
+      #clickPrompt .charcoal-card {
+        padding: 7px 10px !important;
+        max-width: 190px !important;
+      }
+      /* Notebook modal full viewport */
+      #notebookOverlay { padding: 6px !important; }
+      .notebook-book {
+        max-height: 95vh !important;
+        border-left-width: 12px !important;
+        border-radius: 8px !important;
+      }
+      .spiral-binding { left: -12px !important; width: 10px !important; }
+      .spiral-ring { width: 12px !important; height: 5px !important; }
+      /* CRT workstation modal on mobile */
+      #monitorContainer { padding: 4px !important; }
+      .crt-bezel {
+        height: 100dvh !important;
+        height: 100vh !important;
+        max-height: none !important;
+        border-width: 4px !important;
+        border-radius: 10px !important;
+        padding: 0 !important;
+      }
+      .retro-window {
+        top: 36px !important;
+        left: 2px !important;
+        right: 2px !important;
+        max-height: calc(100dvh - 72px) !important;
+        max-height: calc(100vh - 72px) !important;
+      }
+      /* Projects drawer on phone */
+      #projectsDrawer > div {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 20px 20px 0 0 !important;
+        height: 85dvh !important;
+        height: 85vh !important;
+        bottom: 0 !important;
+        top: auto !important;
+      }
+      /* Touch friendliness */
+      button, a, .freud-tab, .beacon-pod, [onclick] {
+        touch-action: manipulation !important;
+        -webkit-tap-highlight-color: transparent !important;
+      }
+      /* Freud dock: show icons only on tiny screens */
+      .freud-tab .tab-text { display: none !important; }
+      .freud-tab.primary-tab .tab-text { display: inline !important; }
+    }
+
+    /* Medium phones / landscape */
+    @media (max-width: 768px) {
+      .book-scroll { -webkit-overflow-scrolling: touch; }
+    }
   </style>
 </head>
 <body class="relative w-full h-full">
@@ -2323,10 +2416,41 @@ Duration: 2022 – Present (6th Semester)<br><br>
     const CAM_MONITOR_POS = new THREE.Vector3(0, 0.65, 1.55);
     const CAM_MONITOR_TARGET = new THREE.Vector3(0, 0.65, 0.1);
 
+    // ── Mobile-aware camera setup ──────────────────────────────────────────
+    (function adaptCameraToViewport() {
+      var aspect = window.innerWidth / window.innerHeight;
+      camera.aspect = aspect;
+      if (aspect < 0.75) {
+        // Portrait phone (iPhone / Android ≤ 390px wide)
+        camera.fov = Math.min(76, 58 + (0.75 - aspect) * 45);
+        CAM_ROOM_POS.set(0, 1.7, 5.6);
+        CAM_ROOM_TARGET.set(0, 0.55, 0);
+        CAM_MONITOR_POS.set(0, 0.65, 1.55);
+        CAM_MONITOR_TARGET.set(0, 0.65, 0.1);
+      } else if (aspect < 1.1) {
+        // Tablet / landscape phone / iPad
+        camera.fov = 50;
+        CAM_ROOM_POS.set(0, 2.0, 4.9);
+        CAM_ROOM_TARGET.set(0, 0.45, 0);
+      } else {
+        // Desktop / laptop
+        camera.fov = 45;
+        CAM_ROOM_POS.set(0, 1.8, 4.2);
+        CAM_ROOM_TARGET.set(0, 0.45, 0);
+      }
+      camera.updateProjectionMatrix();
+    })();
+
     camera.position.copy(CAM_ROOM_POS);
     camera.lookAt(CAM_ROOM_TARGET);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    var _rendererAntialias = window.devicePixelRatio < 2; // skip AA on HiDPI mobile
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: _rendererAntialias, powerPreference: 'default' });
+    } catch (e) {
+      renderer = new THREE.WebGLRenderer({ antialias: false });
+    }
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -2358,9 +2482,55 @@ Duration: 2022 – Present (6th Semester)<br><br>
     fillLight.position.set(2, 3, 2);
     scene.add(fillLight);
 
+    const wallGlow = new THREE.PointLight(0x22354d, 0.8, 9.0);
+    wallGlow.position.set(0, 3.2, -1.8);
+    scene.add(wallGlow);
+
     /* =====================================================================
        2. SCULPTED 3D OBJECTS
        ===================================================================== */
+    // ── Floor + Back Wall (fill the room so mobile doesn't show void) ──
+    const floorMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(18, 18),
+      new THREE.MeshStandardMaterial({ color: 0x0d1017, roughness: 0.95, metalness: 0.0 })
+    );
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.position.set(0, -0.78, 0);
+    floorMesh.receiveShadow = true;
+    scene.add(floorMesh);
+
+    const backWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(18, 10),
+      new THREE.MeshStandardMaterial({ color: 0x080c14, roughness: 0.9 })
+    );
+    backWall.position.set(0, 3.5, -3.5);
+    scene.add(backWall);
+
+    const leftWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 10),
+      new THREE.MeshStandardMaterial({ color: 0x060a12, roughness: 0.9 })
+    );
+    leftWall.rotation.y = Math.PI / 2;
+    leftWall.position.set(-8, 3.5, 0);
+    scene.add(leftWall);
+
+    const rightWall = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 10),
+      new THREE.MeshStandardMaterial({ color: 0x060a12, roughness: 0.9 })
+    );
+    rightWall.rotation.y = -Math.PI / 2;
+    rightWall.position.set(8, 3.5, 0);
+    scene.add(rightWall);
+
+    // Desk legs (adds depth below the desk surface)
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x1e1612, roughness: 0.5 });
+    [[-1.8, -1.8], [-1.8, 0.95], [1.8, -1.8], [1.8, 0.95]].forEach(([lx, lz]) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.78, 0.1), legMat);
+      leg.position.set(lx, -0.39, lz);
+      leg.castShadow = true;
+      scene.add(leg);
+    });
+
     // Desk Top
     const deskTop = new THREE.Mesh(
       new THREE.BoxGeometry(4.2, 0.12, 2.2),
@@ -2632,12 +2802,17 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
     }
 
-    window.addEventListener('click', (e) => handle3DClick(e.clientX, e.clientY, e));
+    let _lastTouch = 0;
     window.addEventListener('touchend', (e) => {
       if (e.changedTouches && e.changedTouches.length > 0) {
+        _lastTouch = Date.now();
         const t = e.changedTouches[0];
         handle3DClick(t.clientX, t.clientY, e);
       }
+    }, { passive: true });
+    window.addEventListener('click', (e) => {
+      if (Date.now() - _lastTouch < 500) return; // suppress ghost click after touchend
+      handle3DClick(e.clientX, e.clientY, e);
     });
 
     window.addEventListener('keydown', (e) => {
@@ -2729,6 +2904,43 @@ Duration: 2022 – Present (6th Semester)<br><br>
 
     let thoughtsList = loadSavedThoughts();
 
+    // ── JSONBin.io: free shared cloud storage for guestbook ──────────────
+    // All visitors share the same bin — thoughts persist across every device!
+    const BIN_ID  = '683259cfad19ca34f8f7c869';
+    const BIN_KEY = '$2a$10$a1X5jECE0YEZX1lXHb3Yp.iQ4ywnJ5wKMLXmhtOlTGH0SiT9BpW6';
+    const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+
+    function saveLocal(list) {
+      try { localStorage.setItem('alvir_visitor_thoughts', JSON.stringify(list)); } catch (e) {}
+    }
+
+    async function syncFromCloud() {
+      try {
+        const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': BIN_KEY } });
+        if (!res.ok) return;
+        const json = await res.json();
+        const cloud = json.record;
+        if (Array.isArray(cloud) && cloud.length > 0) {
+          thoughtsList = cloud;
+          saveLocal(cloud);
+          renderThoughtsList();
+        }
+      } catch (e) { /* offline — keep local */ }
+    }
+
+    async function saveToCloud(list) {
+      try {
+        await fetch(BIN_URL, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-Master-Key': BIN_KEY },
+          body: JSON.stringify(list)
+        });
+      } catch (e) { /* offline — local save already done */ }
+    }
+
+    // Pull latest thoughts from cloud on page load
+    syncFromCloud();
+
     function renderThoughtsList() {
       const container = document.getElementById('pinnedThoughtsList');
       if (!container) return;
@@ -2781,9 +2993,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
       };
 
       thoughtsList.unshift(newEntry);
-      try {
-        localStorage.setItem('alvir_visitor_thoughts', JSON.stringify(thoughtsList));
-      } catch (e) {}
+      saveLocal(thoughtsList);
+      saveToCloud(thoughtsList);
 
       renderThoughtsList();
 
@@ -2796,9 +3007,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const item = thoughtsList.find(t => t.id === id);
       if (item) {
         item.likes = (item.likes || 0) + 1;
-        try {
-          localStorage.setItem('alvir_visitor_thoughts', JSON.stringify(thoughtsList));
-        } catch (e) {}
+        saveLocal(thoughtsList);
+        saveToCloud(thoughtsList);
         renderThoughtsList();
       }
     }
@@ -3305,8 +3515,30 @@ Duration: 2022 – Present (6th Semester)<br><br>
     animate();
 
     window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      var aspect = window.innerWidth / window.innerHeight;
+      camera.aspect = aspect;
+      if (aspect < 0.75) {
+        camera.fov = Math.min(76, 58 + (0.75 - aspect) * 45);
+        CAM_ROOM_POS.set(0, 1.7, 5.6);
+        CAM_ROOM_TARGET.set(0, 0.55, 0);
+        CAM_MONITOR_POS.set(0, 0.65, 1.55);
+        CAM_MONITOR_TARGET.set(0, 0.65, 0.1);
+      } else if (aspect < 1.1) {
+        camera.fov = 50;
+        CAM_ROOM_POS.set(0, 2.0, 4.9);
+        CAM_ROOM_TARGET.set(0, 0.45, 0);
+      } else {
+        camera.fov = 45;
+        CAM_ROOM_POS.set(0, 1.8, 4.2);
+        CAM_ROOM_TARGET.set(0, 0.45, 0);
+      }
       camera.updateProjectionMatrix();
+      if (!isAtWorkstation) {
+        camEndPos && camEndPos.copy(CAM_ROOM_POS);
+        camEndTarget && camEndTarget.copy(CAM_ROOM_TARGET);
+        camera.position.copy(CAM_ROOM_POS);
+        camera.lookAt(CAM_ROOM_TARGET);
+      }
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
   </script>
@@ -3352,11 +3584,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
           v.project(camera);
           const x = (v.x * 0.5 + 0.5) * window.innerWidth;
           const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
-          const l = Math.round(x - pill.offsetWidth - 34);
-          const t = Math.round(y - pill.offsetHeight - 30);
+          const isMobile = window.innerWidth < 640;
+          const lOff = isMobile ? (x - pill.offsetWidth * 0.5) : (x - pill.offsetWidth - 34);
+          const tOff = isMobile ? (y - pill.offsetHeight - 10) : (y - pill.offsetHeight - 30);
           // clamp inside the viewport so the beacon never gets cut off
-          const cl = Math.max(10, Math.min(l, window.innerWidth - pill.offsetWidth - 10));
-          const ct = Math.max(64, Math.min(t, window.innerHeight - pill.offsetHeight - 120));
+          const cl = Math.max(isMobile ? 6 : 10, Math.min(Math.round(lOff), window.innerWidth - pill.offsetWidth - (isMobile ? 6 : 10)));
+          const ct = Math.max(64, Math.min(Math.round(tOff), window.innerHeight - pill.offsetHeight - (isMobile ? 140 : 120)));
           const sig = cl + ',' + ct;
           if (sig !== last) { last = sig; pill.style.left = cl + 'px'; pill.style.top = ct + 'px'; }
         } catch (err) { /* scene not ready yet */ }
