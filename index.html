@@ -3099,6 +3099,19 @@ Duration: 2022 – Present (6th Semester)<br><br>
         CAM_MONITOR_POS.set(0, 0.65, 1.55);
         CAM_MONITOR_TARGET.set(0, 0.65, 0.1);
       }
+
+      /* A box viewed dead-on is a flat silhouette. Turning the camera a few
+         degrees around the framing target exposes a second face on the
+         pedestal and lets the tabletop recede — the cheapest honest way to
+         make the desk read as 3D, and it matters most on a phone where only
+         ~2.3 units of a 4.2-unit desk are on screen at all. */
+      var yawDeg = h < 560 ? 6 : (aspect < 0.8 ? 11 : (aspect < 1.15 ? 8 : 5));
+      var yaw = yawDeg * Math.PI / 180;
+      var offX = CAM_ROOM_POS.x - CAM_ROOM_TARGET.x;
+      var offZ = CAM_ROOM_POS.z - CAM_ROOM_TARGET.z;
+      CAM_ROOM_POS.x = CAM_ROOM_TARGET.x + offX * Math.cos(yaw) + offZ * Math.sin(yaw);
+      CAM_ROOM_POS.z = CAM_ROOM_TARGET.z - offX * Math.sin(yaw) + offZ * Math.cos(yaw);
+
       camera.updateProjectionMatrix();
     }
     adaptCameraToViewport();
@@ -3148,6 +3161,18 @@ Duration: 2022 – Present (6th Semester)<br><br>
     fillLight.position.set(2, 3, 2);
     scene.add(fillLight);
 
+    /* The lamp only reaches the tabletop, which left the aprons, pedestal and
+       legs as black shapes — the reason the desk read as a floating slab.
+       A cool camera-side fill gives every front face a readable value, and a
+       warm bounce (light coming back up off the floor) grounds the desk. */
+    const frontFill = new THREE.DirectionalLight(0xbfd4ff, 0.42);
+    frontFill.position.set(0.6, 1.4, 5.5);
+    scene.add(frontFill);
+
+    const bounceLight = new THREE.PointLight(0xffb066, 0.85, 4.2, 2);
+    bounceLight.position.set(0, -0.5, 1.25);
+    scene.add(bounceLight);
+
     const wallGlow = new THREE.PointLight(0x22354d, 0.8, 9.0);
     wallGlow.position.set(0, 3.2, -1.8);
     scene.add(wallGlow);
@@ -3158,7 +3183,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     // ── Floor + Back Wall (fill the room so mobile doesn't show void) ──
     const floorMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(18, 18),
-      new THREE.MeshStandardMaterial({ color: 0x0d1017, roughness: 0.95, metalness: 0.0 })
+      new THREE.MeshStandardMaterial({ color: 0x161b26, roughness: 0.95, metalness: 0.0 })
     );
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.set(0, -0.78, 0);
@@ -3233,13 +3258,39 @@ Duration: 2022 – Present (6th Semester)<br><br>
     rightWall.position.set(8, 3.5, 0);
     scene.add(rightWall);
 
-    // Desk legs (adds depth below the desk surface)
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x1e1612, roughness: 0.5 });
-    [[-1.8, -1.8], [-1.8, 0.95], [1.8, -1.8], [1.8, 0.95]].forEach(([lx, lz]) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.78, 0.1), legMat);
-      leg.position.set(lx, -0.39, lz);
+    /* ── Desk frame ──────────────────────────────────────────────────────────
+       Three geometry bugs here are why the table read as a slab floating in
+       the dark:
+         · the legs sat at z = -1.8, i.e. 0.7 units behind a 2.2-deep top;
+         · they were 0.78 tall but centred at -0.39 while the underside of the
+           board is at -0.06, so they hovered 6cm above the floor;
+         · they are 3.64 apart in x, but a phone sees only ~2.3 units of desk
+           width — so on mobile no leg was ever on screen.
+       The legs stay (tablet/desktop silhouette); the centre pedestal below is
+       what makes the desk legible at phone width. */
+    const FLOOR_Y = -0.78;              // floor plane
+    const TOP_UNDER = -0.06;            // underside of the 0.12 tabletop board
+    const LEG_X = 1.82, LEG_Z = 0.84;
+    const LEG_H = TOP_UNDER - FLOOR_Y;  // 0.72 — now actually reaches the floor
+    const LEG_MID_Y = (TOP_UNDER + FLOOR_Y) / 2;
+
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x9a6f4a, roughness: 0.5, metalness: 0.04 });
+    [[-LEG_X, -LEG_Z], [-LEG_X, LEG_Z], [LEG_X, -LEG_Z], [LEG_X, LEG_Z]].forEach(([lx, lz]) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.046, LEG_H, 14, 1), legMat);
+      leg.position.set(lx, LEG_MID_Y, lz);
       leg.castShadow = true;
+      leg.receiveShadow = true;
       scene.add(leg);
+
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.055, 14, 1), legMat);
+      collar.position.set(lx, TOP_UNDER - 0.027, lz);
+      collar.castShadow = true;
+      scene.add(collar);
+
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.066, 0.04, 14, 1), legMat);
+      foot.position.set(lx, FLOOR_Y + 0.02, lz);
+      foot.castShadow = true;
+      scene.add(foot);
     });
 
     // Desk Top — procedural walnut grain (no download, sharp at any DPR)
@@ -3315,32 +3366,69 @@ Duration: 2022 – Present (6th Semester)<br><br>
     deskTop.castShadow = true;
     scene.add(deskTop);
 
-    // Front apron: without it the top reads as a floating slab instead of a table.
-    const deskApronMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.5, metalness: 0.06 });
-    const deskApron = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.2, 0.09), deskApronMat);
-    deskApron.position.set(0, -0.15, 1.0);
-    deskApron.castShadow = true;
-    deskApron.receiveShadow = true;
-    scene.add(deskApron);
+    /* Aprons tie the legs to the board; the centre pedestal gives the desk a
+       body that survives the narrow phone crop. */
+    const APRON_Y = -0.16, APRON_H = 0.2, APRON_T = 0.085;
+    const deskApronMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.48, metalness: 0.06 });
 
-    const apronLeft = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 2.6), deskApronMat);
-    apronLeft.position.set(-1.8, -0.15, -0.42);
-    apronLeft.castShadow = true;
-    apronLeft.receiveShadow = true;
-    scene.add(apronLeft);
+    [
+      [LEG_X * 2 - 0.12, APRON_H, APRON_T, 0, APRON_Y, LEG_Z],
+      [LEG_X * 2 - 0.12, APRON_H, APRON_T, 0, APRON_Y, -LEG_Z],
+      [APRON_T, APRON_H, LEG_Z * 2 - 0.12, -LEG_X, APRON_Y, 0],
+      [APRON_T, APRON_H, LEG_Z * 2 - 0.12, LEG_X, APRON_Y, 0]
+    ].forEach(([w, h, d, x, y, z]) => {
+      const part = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), deskApronMat);
+      part.position.set(x, y, z);
+      part.castShadow = true;
+      part.receiveShadow = true;
+      scene.add(part);
+    });
 
-    const apronRight = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 2.6), deskApronMat);
-    apronRight.position.set(1.8, -0.15, -0.42);
-    apronRight.castShadow = true;
-    apronRight.receiveShadow = true;
-    scene.add(apronRight);
+    // Centre drawer pedestal — the part of the desk a phone actually sees.
+    const PED_W = 1.6, PED_D = 1.86;
+    const PED_H = TOP_UNDER - FLOOR_Y - 0.02;
+    const PED_Z = -0.02;
+    const PED_MID_Y = FLOOR_Y + 0.02 + PED_H / 2;
+    const pedestal = new THREE.Mesh(new THREE.BoxGeometry(PED_W, PED_H, PED_D), deskApronMat);
+    pedestal.position.set(0, PED_MID_Y, PED_Z);
+    pedestal.castShadow = true;
+    pedestal.receiveShadow = true;
+    scene.add(pedestal);
+
+    const plinth = new THREE.Mesh(
+      new THREE.BoxGeometry(PED_W - 0.1, 0.05, PED_D - 0.1),
+      new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.85 })
+    );
+    plinth.position.set(0, FLOOR_Y + 0.025, PED_Z);
+    scene.add(plinth);
+
+    // Drawer face + brass knob: the detail that says "desk", not "table".
+    const PED_FRONT = PED_Z + PED_D / 2;
+    const drawerFace = new THREE.Mesh(new THREE.BoxGeometry(PED_W - 0.16, 0.4, 0.035), deskApronMat);
+    drawerFace.position.set(0, -0.36, PED_FRONT + 0.017);
+    drawerFace.castShadow = true;
+    scene.add(drawerFace);
+
+    const knobMat = new THREE.MeshStandardMaterial({ color: 0xc49a5e, roughness: 0.32, metalness: 0.8 });
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.042, 16, 12), knobMat);
+    knob.position.set(0, -0.36, PED_FRONT + 0.068);
+    knob.castShadow = true;
+    scene.add(knob);
+
+    const knobStem = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.055, 10), knobMat);
+    knobStem.rotation.x = Math.PI / 2;
+    knobStem.position.set(0, -0.36, PED_FRONT + 0.048);
+    scene.add(knobStem);
 
     // Mousepad
+    /* Was 2.4 x 1.0 centred on the desk: on a phone it covered almost the whole
+       visible tabletop, so the "table" read as one grey slab. Sized down and
+       pushed to the right where a mouse actually sits. */
     const mousepad = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 0.015, 1.0),
+      new THREE.BoxGeometry(1.5, 0.015, 0.75),
       new THREE.MeshStandardMaterial({ color: 0x111622, roughness: 0.8 })
     );
-    mousepad.position.set(0, 0.065, 0.35);
+    mousepad.position.set(0.55, 0.065, 0.4);
     mousepad.receiveShadow = true;
     scene.add(mousepad);
 
