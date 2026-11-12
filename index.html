@@ -1886,6 +1886,58 @@
         scroll-behavior: auto !important;
       }
     }
+
+    /* =========================================================================
+       STAGE 4: FEATURED PROJECTS & WELCOME CARD STYLES
+       ========================================================================= */
+    .proj-featured-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 5px;
+      border-radius: 2px;
+      font-size: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: #10151D;
+      background: #D7AD49;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .project-grid-card[data-featured="true"] {
+      border-color: rgba(215, 173, 73, 0.45);
+      box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55), 0 0 14px -3px rgba(215, 173, 73, 0.2);
+    }
+    .project-grid-card[data-featured="true"]:hover {
+      border-color: rgba(215, 173, 73, 0.85);
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.65), 0 0 20px -2px rgba(215, 173, 73, 0.35);
+    }
+
+    /* Welcome Card (subtle, non-intrusive greeting) */
+    .welcome-card {
+      background: #171C23;
+      border: 1px solid rgba(215, 173, 73, 0.35);
+      border-radius: 14px;
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6), 0 14px 32px -6px rgba(0, 0, 0, 0.6);
+      max-width: 310px;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    @media (min-width: 768px) and (min-height: 601px) {
+      .welcome-card {
+        top: calc(var(--safe-t) + 72px);
+        right: calc(var(--safe-r) + 20px);
+      }
+    }
+    @media (max-width: 767px), (max-height: 600px) {
+      .welcome-card {
+        top: calc(var(--safe-t) + 58px);
+        right: calc(var(--safe-r) + 12px);
+        left: calc(var(--safe-l) + 12px);
+        max-width: min(340px, calc(100vw - var(--safe-l) - var(--safe-r) - 24px));
+        margin: 0 auto;
+      }
+    }
   </style>
 
   <!-- Pre-compiled Tailwind utilities. Kept after the custom styles on purpose:
@@ -1994,6 +2046,46 @@
       </div>
     </button>
   </header>
+
+  <!-- =========================================================================
+       STAGE 4: WELCOME CARD (DISMISSIBLE, NON-INTRUSIVE FOR FIRST-TIME VISITORS)
+       ========================================================================= -->
+  <aside id="welcomeCard" aria-label="Welcome greeting"
+         class="welcome-card fixed z-20 pointer-events-auto">
+    <div class="p-3 sm:p-3.5">
+      <!-- Top header line with pulse dot and close button -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-[#D7AD49] animate-pulse"></span>
+          <span class="font-mono text-[9px] font-semibold text-[#D7AD49] tracking-widest uppercase">VISITOR TERMINAL</span>
+        </div>
+        <button type="button" onclick="dismissWelcomeCard()" aria-label="Dismiss welcome card"
+                class="w-5 h-5 rounded-[2px] text-[#EAE3D5]/50 hover:text-[#EAE3D5] hover:bg-white/10 flex items-center justify-center text-xs transition cursor-pointer">
+          ✕
+        </button>
+      </div>
+
+      <!-- Welcome message -->
+      <div class="mt-1.5">
+        <div class="font-retro text-[13px] text-[#EAE3D5] leading-snug">Welcome to my workspace</div>
+        <p class="font-mono text-[9.5px] text-[#EAE3D5]/65 mt-1 leading-relaxed">
+          Pull up a chair to boot <span class="text-[#347E79] font-semibold">AlvirOS</span>, explore my featured projects, or leave a thought in the desk notebook.
+        </p>
+      </div>
+
+      <!-- Quick action links -->
+      <div class="mt-2.5 pt-2 border-t border-[#EAE3D5]/12 flex items-center justify-between gap-2">
+        <button type="button" onclick="openProjectsDrawer(); dismissWelcomeCard();"
+                class="px-2.5 py-1 rounded-[3px] bg-[#D7AD49] hover:bg-[#EAE3D5] text-[#10151D] font-retro text-[10px] tracking-wider transition flex items-center gap-1 cursor-pointer">
+          <span>FEATURED PROJECTS</span> <span class="text-[9px]">★</span>
+        </button>
+        <button type="button" onclick="dismissWelcomeCard()"
+                class="text-[9px] font-mono text-[#EAE3D5]/45 hover:text-[#EAE3D5]/90 transition cursor-pointer">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  </aside>
 
   <!-- Tiny pixel stars — ambient decorations -->
   <svg class="twinkle hidden md:block fixed left-[22%] top-[20%] z-[6] pointer-events-none" width="10" height="10" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><path d="M5 0v10M0 5h10M3 3l4 4M7 3 3 7" stroke="#D7AD49" stroke-width="1"/></svg>
@@ -2166,6 +2258,10 @@
           <svg width="11" height="11" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="2" width="5" height="5" fill="currentColor"/><rect x="9" y="2" width="5" height="5" fill="currentColor"/><rect x="2" y="9" width="5" height="5" fill="currentColor"/><rect x="9" y="9" width="5" height="5" fill="currentColor"/></svg>
           All Projects
         </button>
+        <button onclick="filterDrawerProjects('featured')" class="proj-filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-transparent border border-[#EAE3D5]/20 text-[#EAE3D5]/60 font-retro text-[10px] tracking-wider transition flex-shrink-0">
+          <span class="text-amber-400 font-bold">★</span>
+          Featured (3)
+        </button>
         <button onclick="filterDrawerProjects('fullstack')" class="proj-filter-btn flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-transparent border border-[#EAE3D5]/20 text-[#EAE3D5]/60 font-retro text-[10px] tracking-wider transition flex-shrink-0">
           <svg width="11" height="11" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="2" y="2" width="12" height="4" fill="currentColor" opacity="0.6"/><rect x="2" y="8" width="12" height="2" fill="currentColor"/><rect x="2" y="12" width="8" height="2" fill="currentColor" opacity="0.6"/></svg>
           Full-Stack &amp; AI
@@ -2184,13 +2280,13 @@
       <div class="p-4 sm:p-5 overflow-y-auto max-h-[60vh] grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5 book-scroll">
         
         <!-- 1. EduLearn -->
-        <div class="project-grid-card proj-tile group" data-category="fullstack" style="--tint:#D7AD49; --i:0"
+        <div class="project-grid-card proj-tile group" data-category="fullstack" data-featured="true" style="--tint:#D7AD49; --i:0"
              data-title="EduLearn — AI Learning Platform" data-cat-label="FULL-STACK &amp; AI" data-year="2024" data-status="live" data-repo="EduLearn"
              data-demo="https://edu-learn-dpjj.vercel.app/"
              data-desc="E-learning platform featuring dynamic AI tutoring, interactive quizzes, career roadmaps, real-time collaboration with Socket.io, SSLCommerz payments, and automated certification."
              data-tech="React 18,Node.js,MongoDB,Socket.io,OpenRouter AI"
              onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
-          <div class="proj-tile-bar"><span>EduLearn.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-tile-bar"><span>EduLearn.EXE <span class="proj-featured-pill">★ FEATURED</span></span><span class="tb-btns">— ▢ ✕</span></div>
           <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/EduLearn" alt="EduLearn preview" loading="lazy" onerror="this.style.display='none'"></div>
           <div class="px-3 py-2.5">
             <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">MERN &amp; OPENROUTER AI ECOSYSTEM</div>
@@ -2202,12 +2298,12 @@
         </div>
 
         <!-- 2. 3D Hand Cricket -->
-        <div class="project-grid-card proj-tile group" data-category="3d" style="--tint:#347E79; --i:1" data-dark="1"
+        <div class="project-grid-card proj-tile group" data-category="3d" data-featured="true" style="--tint:#347E79; --i:1" data-dark="1"
              data-title="3D Hand Cricket — Multiplayer" data-cat-label="3D &amp; WEBRTC" data-year="2025" data-status="live" data-repo="hand-cricket"
              data-desc="Authentic school nostalgia 3D hand cricket game with 2-player real-time online multiplayer, 3D animated hands, physics effects, audio cues, and seamless WebRTC peer connectivity."
              data-tech="Three.js (WebGL),WebRTC,HTML5 Canvas"
              onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
-          <div class="proj-tile-bar"><span>HandCricket3D.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-tile-bar"><span>HandCricket3D.EXE <span class="proj-featured-pill">★ FEATURED</span></span><span class="tb-btns">— ▢ ✕</span></div>
           <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/hand-cricket" alt="3D Hand Cricket preview" loading="lazy" onerror="this.style.display='none'"></div>
           <div class="px-3 py-2.5">
             <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">WEBGL GAME · P2P MULTIPLAYER</div>
@@ -2236,13 +2332,13 @@
         </div>
 
         <!-- 4. NextGenNerds -->
-        <div class="project-grid-card proj-tile group" data-category="fullstack" style="--tint:#D7AD49; --i:3"
+        <div class="project-grid-card proj-tile group" data-category="fullstack" data-featured="true" style="--tint:#D7AD49; --i:3"
              data-title="NextGenNerds — CS Learning Hub" data-cat-label="FULL-STACK &amp; AI" data-year="2024" data-status="live" data-repo="SD-Project"
              data-demo="https://nextgennerds.netlify.app/"
              data-desc="Interactive CS community platform designed with smooth GSAP animations, Tailwind CSS responsive layouts, tutorial libraries, and developer resources."
              data-tech="React,GSAP,Tailwind CSS,Netlify CI/CD"
              onclick="selectProject(this)" ondblclick="openProjectDetail(this)">
-          <div class="proj-tile-bar"><span>NextGenNerds.EXE</span><span class="tb-btns">— ▢ ✕</span></div>
+          <div class="proj-tile-bar"><span>NextGenNerds.EXE <span class="proj-featured-pill">★ FEATURED</span></span><span class="tb-btns">— ▢ ✕</span></div>
           <div class="proj-thumb"><img src="https://opengraph.githubassets.com/1/Alvirwebd/SD-Project" alt="NextGenNerds preview" loading="lazy" onerror="this.style.display='none'"></div>
           <div class="px-3 py-2.5">
             <div class="text-[9px] font-mono text-[#EAE3D5]/45 tracking-wider">COMMUNITY HUB · GSAP MOTION</div>
@@ -2503,10 +2599,13 @@
           <div class="p-3 bg-white retro-inward-box m-1 max-h-[500px] overflow-y-auto retro-scroll space-y-3.5">
             
             <!-- 1. EduLearn -->
-            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+            <div class="p-3.5 bg-amber-50/40 border border-amber-300/80 rounded-lg shadow-sm">
               <div class="flex items-start justify-between flex-wrap gap-2">
                 <div>
-                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">EduLearn — Intelligent Learning Ecosystem</h3>
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <h3 class="font-bold text-slate-900 text-sm sm:text-base">EduLearn — Intelligent Learning Ecosystem</h3>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider bg-amber-200 text-amber-950 border border-amber-400">★ FEATURED</span>
+                  </div>
                   <div class="text-[11px] text-slate-500 font-medium">Full-Stack MERN + AI Study Partner</div>
                 </div>
                 <div class="flex items-center gap-1.5">
@@ -2530,10 +2629,13 @@
             </div>
 
             <!-- 2. 3D Hand Cricket -->
-            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+            <div class="p-3.5 bg-amber-50/40 border border-amber-300/80 rounded-lg shadow-sm">
               <div class="flex items-start justify-between flex-wrap gap-2">
                 <div>
-                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">3D Hand Cricket — Online Multiplayer</h3>
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <h3 class="font-bold text-slate-900 text-sm sm:text-base">3D Hand Cricket — Online Multiplayer</h3>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider bg-amber-200 text-amber-950 border border-amber-400">★ FEATURED</span>
+                  </div>
                   <div class="text-[11px] text-slate-500 font-medium">Authentic School Nostalgia with WebRTC P2P</div>
                 </div>
                 <a href="https://github.com/Alvirwebd/hand-cricket" target="_blank" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded transition flex items-center gap-1 shadow">
@@ -2551,10 +2653,13 @@
             </div>
 
             <!-- 3. NextGenNerds -->
-            <div class="p-3.5 bg-slate-50 border border-slate-300 rounded-lg">
+            <div class="p-3.5 bg-amber-50/40 border border-amber-300/80 rounded-lg shadow-sm">
               <div class="flex items-start justify-between flex-wrap gap-2">
                 <div>
-                  <h3 class="font-bold text-slate-900 text-sm sm:text-base">NextGenNerds — CS Learning Hub</h3>
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <h3 class="font-bold text-slate-900 text-sm sm:text-base">NextGenNerds — CS Learning Hub</h3>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider bg-amber-200 text-amber-950 border border-amber-400">★ FEATURED</span>
+                  </div>
                   <div class="text-[11px] text-slate-500 font-medium">Community Platform & Animated Roadmaps</div>
                 </div>
                 <div class="flex items-center gap-1.5">
@@ -3900,6 +4005,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
       document.getElementById('clickPrompt').style.pointerEvents = 'none';
       document.getElementById('notebookPill').style.opacity = '0';
       document.getElementById('notebookPill').style.pointerEvents = 'none';
+      const _wc = document.getElementById('welcomeCard');
+      if (_wc) {
+        _wc.style.opacity = '0';
+        _wc.style.pointerEvents = 'none';
+      }
 
       setTimeout(() => {
         document.getElementById('monitorContainer').classList.add('active-workstation');
@@ -3936,6 +4046,15 @@ Duration: 2022 – Present (6th Semester)<br><br>
         document.getElementById('clickPrompt').style.pointerEvents = 'auto';
         document.getElementById('notebookPill').style.opacity = '1';
         document.getElementById('notebookPill').style.pointerEvents = 'auto';
+        const _wc = document.getElementById('welcomeCard');
+        if (_wc && !_wc.dataset.dismissed) {
+          try {
+            if (localStorage.getItem('alvir_welcome_dismissed') !== 'true') {
+              _wc.style.opacity = '1';
+              _wc.style.pointerEvents = 'auto';
+            }
+          } catch (err) {}
+        }
       }, 300);
     }
 
@@ -3949,7 +4068,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (isAtWorkstation) return;
       if (Date.now() - lastWorkstationExitTime < 700) return;
       if (e && e.target) {
-        if (e.target.closest('#monitorContainer, #notebookOverlay, #contactModal, #projectsDrawer, #roomHeader, #roomFooter, .beacon-pod, button, a, input, textarea')) {
+        if (e.target.closest('#monitorContainer, #notebookOverlay, #contactModal, #projectsDrawer, #roomHeader, #roomFooter, #welcomeCard, .beacon-pod, button, a, input, textarea')) {
           return;
         }
       }
@@ -4085,10 +4204,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
 
       cards.forEach(card => {
-        if (cat === 'all' || card.dataset.category === cat) {
+        if (cat === 'all') {
           card.style.display = 'block';
+        } else if (cat === 'featured') {
+          card.style.display = card.dataset.featured === 'true' ? 'block' : 'none';
         } else {
-          card.style.display = 'none';
+          card.style.display = card.dataset.category === cat ? 'block' : 'none';
         }
       });
     }
@@ -4097,6 +4218,39 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.closeProjectsDrawer = closeProjectsDrawer;
     window.handleDrawerBackdropClick = handleDrawerBackdropClick;
     window.filterDrawerProjects = filterDrawerProjects;
+
+    /* =====================================================================
+       STAGE 4: WELCOME CARD CONTROLLER
+       ===================================================================== */
+    function dismissWelcomeCard() {
+      const card = document.getElementById('welcomeCard');
+      if (card) {
+        card.dataset.dismissed = 'true';
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(-8px)';
+        card.style.pointerEvents = 'none';
+        setTimeout(() => {
+          if (card.parentNode) card.parentNode.removeChild(card);
+        }, 320);
+      }
+      try {
+        localStorage.setItem('alvir_welcome_dismissed', 'true');
+      } catch (e) {}
+    }
+
+    (function initWelcomeCard() {
+      try {
+        if (localStorage.getItem('alvir_welcome_dismissed') === 'true') {
+          const card = document.getElementById('welcomeCard');
+          if (card) {
+            card.dataset.dismissed = 'true';
+            card.style.display = 'none';
+          }
+        }
+      } catch (e) {}
+    })();
+
+    window.dismissWelcomeCard = dismissWelcomeCard;
 
     /* =====================================================================
        4. PERSISTENT THOUGHTS JOURNAL & GUESTBOOK
@@ -4929,7 +5083,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         <span class="text-yellow-400 font-bold">AVAILABLE COMMANDS:</span><br>
         • <span class="text-white font-bold">whoami</span>     - About Alvir Shahriar<br>
         • <span class="text-white font-bold">skills</span>     - Full-stack languages & tools<br>
-        • <span class="text-white font-bold">projects</span>   - Study & Skill Management, EduLearn, NextGenNerds<br>
+        • <span class="text-white font-bold">projects</span>   - Featured projects & full directory<br>
         • <span class="text-white font-bold">research</span>   - Foundry Lab LLM question generation paper<br>
         • <span class="text-white font-bold">notebook</span>   - Open desk thoughts journal<br>
         • <span class="text-white font-bold">contact</span>    - Direct email & social profiles<br>
@@ -4937,7 +5091,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       `,
       whoami: () => `Alvir Shahriar — CSE 6th Semester at IIUC & Research Intern @ Foundry Lab.`,
       skills: () => `Languages: JS/TS, Python, C++, SQL | Stack: React, Next.js, Node, Express, MongoDB, MySQL, Tailwind.`,
-      projects: () => `1. Study & Skill Management System<br>2. EduLearn (Full-Stack MERN + AI)<br>3. NextGenNerds (CS Community)`,
+      projects: () => `★ FEATURED PROJECTS:<br>  1. EduLearn (Full-Stack MERN + AI Study Partner)<br>  2. 3D Hand Cricket (Multiplayer WebRTC 3D Game)<br>  3. NextGenNerds (CS Learning Hub & Roadmaps)<br><br>Open 'Projects' folder on desktop to explore all 11 works.`,
       research: () => `Literature Review & Gap Analysis on LLM-based Automatic Educational Question Generation (Foundry Lab).`,
       notebook: () => { openNotebook(); return `Opening desk thoughts journal...`; },
       contact: () => `Email: saplaali56@gmail.com | GitHub: github.com/Alvirwebd`,
