@@ -2095,7 +2095,7 @@
     
     <!-- Top Left: Identity Nameplate (flat ivory plate, pixel avatar, hanko stamp) -->
     <div class="relative pointer-events-auto">
-      <div id="profilePlate" class="paper-card px-2.5 sm:px-3.5 gap-2 sm:gap-3 py-2.5 flex items-center !rounded-[14px] cursor-pointer" onclick="toggleProfileCard(event)" title="Open identity card">
+      <div id="profilePlate" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="profileCard" class="paper-card px-2.5 sm:px-3.5 gap-2 sm:gap-3 py-2.5 flex items-center !rounded-[14px] cursor-pointer" onclick="toggleProfileCard(event)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleProfileCard(event);}" title="Open profile card">
       <!-- custom pixel-art avatar -->
       <div class="w-10 h-10 flex-shrink-0 bg-[#D7AD49] border-[1.5px] border-[#44372E] rounded-[3px] flex items-center justify-center">
         <svg width="26" height="26" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">
@@ -2130,22 +2130,46 @@
       </div>
       </div>
 
-      <!-- Identity card popover -->
-      <div id="profileCard" class="profile-pop" role="dialog" aria-label="Alvir Shahriar Identity Card" inert aria-hidden="true">
-        <div class="pp-head">ALVIROS ▪ IDENTITY CARD</div>
-        <div class="px-3 py-2.5">
+      <!-- Identity card popover (About Me Profile Panel) -->
+      <div id="profileCard" class="profile-pop" role="dialog" aria-label="About Alvir Shahriar" inert aria-hidden="true">
+        <div class="pp-head flex items-center justify-between">
+          <span>ALVIROS ▪ IDENTITY &amp; BIO</span>
+          <button type="button" onclick="closeProfileCard()" aria-label="Close identity card" class="text-[#D7AD49] hover:text-[#EAE3D5] font-mono text-xs px-1">✕</button>
+        </div>
+        <div class="px-3.5 py-3 text-left space-y-2.5">
           <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-[2px] bg-[#D7AD49] border-[1.5px] border-[#44372E] flex items-center justify-center flex-shrink-0">
-              <span class="font-retro text-[10px] text-[#10151D] leading-none">阿</span>
+            <div class="w-9 h-9 rounded-[2px] bg-[#D7AD49] border-[1.5px] border-[#44372E] flex items-center justify-center flex-shrink-0">
+              <span class="font-retro text-[11px] text-[#10151D] leading-none">阿</span>
             </div>
             <div>
-              <div class="font-retro text-[11px] text-[#EAE3D5] leading-none tracking-wide">Alvir Shahriar</div>
-              <div class="font-mono text-[8.5px] text-[#EAE3D5]/60 mt-1 tracking-wide">CSE UNDERGRADUATE</div>
+              <div class="font-retro text-[12px] text-[#EAE3D5] leading-none tracking-wide">Alvir Shahriar</div>
+              <div class="font-mono text-[9px] text-amber-400 mt-1 tracking-wide">RESEARCH INTERN @ FOUNDRY LAB</div>
             </div>
-            <span class="ml-auto status-dot text-emerald-400" title="online"></span>
+            <span class="ml-auto status-dot text-emerald-400" title="Online"></span>
           </div>
-          <div class="pt-2 mt-2 border-t border-[#EAE3D5]/15 font-mono text-[8.5px] text-[#EAE3D5]/60 leading-relaxed">
-            AI &amp; WEB DEVELOPMENT<br>IIUC · RESEARCH INTERN @ FOUNDRY LAB
+          
+          <div class="pt-2 border-t border-[#EAE3D5]/15 font-mono text-[9px] text-[#EAE3D5]/80 leading-relaxed space-y-1.5">
+            <div>
+              <span class="text-[#D7AD49]">🎓 Education:</span> B.Sc. in Computer Science &amp; Engineering (6th Sem), IIUC
+            </div>
+            <div>
+              <span class="text-[#D7AD49]">🔬 Research:</span> Foundry Lab (AI Pedagogical Evaluation &amp; LLMs)
+            </div>
+            <div>
+              <span class="text-[#D7AD49]">💻 Focus:</span> AI Systems, Three.js / WebGL &amp; Full-Stack Web Development
+            </div>
+            <div>
+              <span class="text-[#D7AD49]">📍 Location:</span> Chittagong, Bangladesh
+            </div>
+          </div>
+
+          <div class="pt-2 border-t border-[#EAE3D5]/15 flex items-center gap-2">
+            <a href="https://bd.linkedin.com/in/alvir-shahriar-15bb1232a" target="_blank" rel="noopener noreferrer" class="flex-1 py-1 px-2 bg-[#234034] hover:bg-[#315A4A] text-[#EAE3D5] text-[10px] font-mono font-bold rounded-[2px] border border-[#347E79]/60 text-center transition">
+              LinkedIn ↗
+            </a>
+            <a href="https://github.com/Alvirwebd" target="_blank" rel="noopener noreferrer" class="flex-1 py-1 px-2 bg-[#2a2b36] hover:bg-[#3b3c4a] text-[#EAE3D5] text-[10px] font-mono font-bold rounded-[2px] border border-slate-600 text-center transition">
+              GitHub ↗
+            </a>
           </div>
         </div>
       </div>
@@ -2177,9 +2201,9 @@
       </div>
       <!-- transport buttons -->
       <div class="flex items-center gap-1 flex-shrink-0">
-        <span class="lw-ico text-[#EAE3D5]/40 hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M11 3v10L5 8l6-5Z" fill="currentColor"/><rect x="3" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
+        <span id="btnTrackPrev" role="button" tabindex="0" onclick="event.stopPropagation(); selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();event.preventDefault();selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);}" title="Switch Track" aria-label="Switch to other track" class="lw-ico text-[#EAE3D5]/40 hover:text-[#D7AD49] cursor-pointer hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M11 3v10L5 8l6-5Z" fill="currentColor"/><rect x="3" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
         <span id="audioIcon" class="lw-ico text-[#EAE3D5]/90"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></span>
-        <span class="lw-ico text-[#EAE3D5]/40 hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M5 3v10l6-5-6-5Z" fill="currentColor"/><rect x="11.4" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
+        <span id="btnTrackNext" role="button" tabindex="0" onclick="event.stopPropagation(); selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);" onkeydown="if(event.key==='Enter'||event.key===' '){event.stopPropagation();event.preventDefault();selectBuiltinTrack(currentBuiltinTrack === 1 ? 2 : 1);}" title="Switch Track" aria-label="Switch to other track" class="lw-ico text-[#EAE3D5]/40 hover:text-[#D7AD49] cursor-pointer hidden sm:inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges"><path d="M5 3v10l6-5-6-5Z" fill="currentColor"/><rect x="11.4" y="3" width="1.6" height="10" fill="currentColor"/></svg></span>
         <span class="status-dot text-emerald-400"></span>
       </div>
     </button>
@@ -3064,6 +3088,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
               <div id="bar8" class="w-2.5 bg-emerald-500 rounded-t transition-all duration-100" style="height: 35%"></div>
             </div>
 
+            <div class="flex items-center justify-between gap-1 text-[11px] pt-1 border-t border-slate-700/60 mt-1">
+              <span class="text-slate-400 font-mono text-[10px]">TRACK:</span>
+              <div class="flex items-center gap-1.5">
+                <button type="button" id="btnTrack1" onclick="selectBuiltinTrack(1)" class="retro-btn px-2 h-6 text-[10px] font-bold text-black" title="Switch to Track 1: Cozy Lo-Fi">1. Cozy Lo-Fi</button>
+                <button type="button" id="btnTrack2" onclick="selectBuiltinTrack(2)" class="retro-btn px-2 h-6 text-[10px] font-bold text-black" title="Switch to Track 2: Sunset Chill">2. Sunset Chill</button>
+              </div>
+            </div>
+
             <div class="flex items-center justify-center gap-2 pt-1">
               <button onclick="toggleMusicPlayback()" id="btnPlayPause" class="retro-btn w-16 h-7 text-xs font-bold text-black">⏸ Pause</button>
               <button onclick="stopMusicPlayback()" class="retro-btn w-14 h-7 text-xs font-bold text-black">⏹ Stop</button>
@@ -3181,17 +3213,20 @@ Duration: 2022 – Present (6th Semester)<br><br>
             <div class="text-[10px] text-[#315A4A] font-mono font-semibold mt-0.5 tracking-wide">"Every visitor leaves a trace."</div>
           </div>
         </div>
-        <button onclick="closeNotebook()" aria-label="Close guestbook" class="w-8 h-8 rounded-[3px] bg-[#44372E] hover:bg-[#315A4A] text-[#EAE3D5] font-bold flex items-center justify-center text-xs transition border border-[#2A211B] shadow-[2px_2px_0_rgba(0,0,0,0.3)]">✕</button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btnOwnerAuthToggle" onclick="openOwnerModal()" aria-label="Owner guestbook access" class="px-2 py-1 rounded-[3px] bg-[#44372E]/10 hover:bg-[#44372E]/20 text-[#44372E] text-[10px] font-mono font-bold border border-[#44372E]/30 transition flex items-center gap-1">🔒 Owner Access</button>
+          <button onclick="closeNotebook()" aria-label="Close guestbook" class="w-8 h-8 rounded-[3px] bg-[#44372E] hover:bg-[#315A4A] text-[#EAE3D5] font-bold flex items-center justify-center text-xs transition border border-[#2A211B] shadow-[2px_2px_0_rgba(0,0,0,0.3)]">✕</button>
+        </div>
       </div>
 
       <!-- Notebook Pages -->
       <div class="flex-1 p-6 pl-10 overflow-y-auto book-scroll font-hand text-slate-800 text-lg sm:text-xl leading-relaxed space-y-4">
         
-        <!-- PAGE 1: THE VISITOR PACT & PERSISTENT THOUGHT WRITER -->
+        <!-- PAGE 1: THE VISITOR PACT & ANONYMOUS PRIVATE GUESTBOOK -->
         <div id="notePage1" class="space-y-4">
           <div class="border-b-2 border-dashed border-amber-300 pb-2 flex items-center justify-between">
-            <span class="text-xs font-mono font-bold text-amber-900 uppercase">THE VISITOR PACT // LEAVE YOUR MARK</span>
-            <span class="text-[11px] font-mono text-emerald-700 font-bold">● Live Shared Community Wall</span>
+            <span class="text-xs font-mono font-bold text-amber-900 uppercase">THE VISITOR PACT // PRIVATE GUESTBOOK</span>
+            <span class="text-[11px] font-mono text-emerald-700 font-bold">● Anonymous Private Channel</span>
           </div>
 
           <div class="p-4 bg-[#D7AD49]/15 border border-[#44372E]/40 rounded-[4px] shadow-[2px_2px_0_rgba(68,55,46,0.18)] space-y-2">
@@ -3199,7 +3234,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
               "You stopped by my desk for a reason. Before you leave, leave a thought."
             </p>
             <p class="text-xs sm:text-sm text-[#44372E]/80 font-sans leading-relaxed">
-              Whether it's honest advice, what you're currently building, or an unfiltered thought — write it below. As many people as visit can share their thoughts here!
+              Whether it's honest advice, what you're currently building, or an unfiltered thought — write it below. Your entry is private: delivered securely to Alvir and only visible to you on this device.
             </p>
           </div>
 
@@ -3223,20 +3258,33 @@ Duration: 2022 – Present (6th Semester)<br><br>
             <textarea id="visitorNoteInput" aria-label="Your thought note" class="w-full h-24 p-3 bg-[#FFFDF6] border border-[#44372E]/50 rounded-[3px] font-hand text-xl text-[#44372E] placeholder-[#44372E]/40 focus:outline-none focus:border-[#315A4A] shadow-[inset_1px_1px_0_rgba(68,55,46,0.12)]" placeholder="Drop your honest thought here..."></textarea>
 
             <div class="flex items-center justify-between flex-wrap gap-2">
-              <button onclick="saveVisitorNote()" class="px-5 py-2.5 bg-[#315A4A] hover:bg-[#3E6E5B] text-[#EAE3D5] font-mono text-xs font-bold rounded-[3px] border border-[#234034] shadow-[2px_2px_0_rgba(0,0,0,0.35)] transition active:translate-y-[1px] active:shadow-[1px_1px_0_rgba(0,0,0,0.35)] flex items-center gap-1.5">
-                <span>Pin Thought to Desk</span> <span>📌</span>
+              <button id="btnSubmitThought" onclick="saveVisitorNote()" class="px-5 py-2.5 bg-[#315A4A] hover:bg-[#3E6E5B] text-[#EAE3D5] font-mono text-xs font-bold rounded-[3px] border border-[#234034] shadow-[2px_2px_0_rgba(0,0,0,0.35)] transition active:translate-y-[1px] active:shadow-[1px_1px_0_rgba(0,0,0,0.35)] flex items-center gap-1.5">
+                <span>Pin Private Thought</span> <span>📌</span>
               </button>
-              <span id="visitorNoteSuccess" class="hidden text-xs text-[#315A4A] font-bold animate-pulse">✓ Your thought is etched into Alvir's desk!</span>
             </div>
+            <div id="visitorNoteSuccess" class="hidden text-xs text-[#315A4A] font-bold py-1">✓ Your thought is securely pinned in Alvir's private guestbook!</div>
+            <div id="visitorNoteError" class="hidden text-xs text-red-700 bg-red-100/90 border border-red-300 rounded p-2 font-mono"></div>
           </div>
 
-          <!-- Live Pinned Thoughts Stream -->
+          <!-- Visitor's Own Pinned Note (Retrieved securely from backend via Auth header) -->
           <div class="pt-2 border-t border-slate-200">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider">Thoughts Left by Visitors (<span id="thoughtCount">4</span>):</span>
-              <span class="text-[10px] text-slate-400 font-mono">Persists on Desk</span>
+              <span class="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider">Your Pinned Note (This Device):</span>
+              <span class="text-[10px] text-slate-400 font-mono">Private Entry</span>
             </div>
-            <div id="pinnedThoughtsList" class="space-y-2.5 text-sm font-sans"></div>
+            <div id="visitorOwnThoughtContainer" class="space-y-2.5 text-sm font-sans"></div>
+          </div>
+
+          <!-- Owner Administrative Notes View (Active only when authenticated) -->
+          <div id="ownerSectionContainer" class="hidden pt-2 border-t-2 border-dashed border-[#44372E]/40 space-y-3">
+            <div class="flex items-center justify-between bg-[#315A4A]/20 p-2.5 rounded-[3px] border border-[#315A4A]/40">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">🔑</span>
+                <span class="font-mono text-xs font-bold text-[#234034]">Owner Mode Active — Private Inbox (<span id="ownerThoughtCount">0</span>)</span>
+              </div>
+              <button type="button" onclick="ownerLogout()" class="px-2.5 py-1 bg-[#44372E] hover:bg-[#315A4A] text-[#EAE3D5] font-mono text-[10px] font-bold rounded-[2px] transition">Logout 🔓</button>
+            </div>
+            <div id="ownerThoughtsList" class="space-y-2.5 text-sm font-sans"></div>
           </div>
         </div>
 
@@ -3296,6 +3344,28 @@ Duration: 2022 – Present (6th Semester)<br><br>
         <button id="btnPrevPage" onclick="prevNotePage()" class="px-3.5 py-1.5 bg-[#EAE3D5] hover:bg-[#D7AD49]/40 border border-[#44372E]/50 rounded-[3px] font-mono font-bold text-[#44372E] transition shadow-[2px_2px_0_rgba(68,55,46,0.25)] disabled:opacity-40">◀ Prev Page</button>
         <span id="notebookPageIndicator" class="font-mono text-[#44372E] font-bold tracking-wide">Page 1 of 3</span>
         <button id="btnNextPage" onclick="nextNotePage()" class="px-3.5 py-1.5 bg-[#EAE3D5] hover:bg-[#D7AD49]/40 border border-[#44372E]/50 rounded-[3px] font-mono font-bold text-[#44372E] transition shadow-[2px_2px_0_rgba(68,55,46,0.25)] disabled:opacity-40">Next Page ▶</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Owner Login Modal -->
+  <div id="ownerAuthModal" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" style="display: none;" role="dialog" aria-modal="true" aria-label="Owner Authentication" inert aria-hidden="true">
+    <div class="w-full max-w-sm bg-[#171C23] border border-[#D7AD49] rounded-[3px] shadow-[6px_6px_0_rgba(0,0,0,0.7)] text-left relative overflow-hidden">
+      <div class="h-8 flex items-center justify-between px-3 bg-[#D7AD49] border-b border-[#10151D]">
+        <span class="font-retro text-[11px] text-[#10151D] tracking-wide">ALVIROS // OWNER VERIFICATION</span>
+        <button type="button" onclick="closeOwnerModal()" aria-label="Close owner login" class="w-5 h-5 flex items-center justify-center text-xs text-[#10151D] hover:bg-black/10 rounded font-bold">✕</button>
+      </div>
+      <div class="p-4 space-y-3 font-mono text-xs text-[#EAE3D5]">
+        <p class="text-[11px] text-[#EAE3D5]/70">Enter your Cloudflare Admin Secret Key to access the private inbox.</p>
+        <div>
+          <label for="ownerKeyInput" class="block text-[10px] text-amber-300 font-bold mb-1 uppercase tracking-wider">Admin Key:</label>
+          <input type="password" id="ownerKeyInput" class="w-full p-2 bg-black border border-slate-600 rounded text-amber-300 focus:outline-none focus:border-amber-400 font-mono text-xs" placeholder="••••••••••••" onkeydown="if(event.key==='Enter')submitOwnerLogin()" />
+        </div>
+        <div id="ownerAuthError" class="hidden text-[11px] text-rose-400 font-mono"></div>
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <button type="button" onclick="closeOwnerModal()" class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-mono">Cancel</button>
+          <button type="button" id="btnSubmitOwnerAuth" onclick="submitOwnerLogin()" class="px-4 py-1.5 bg-[#315A4A] hover:bg-[#3E6E5B] text-[#EAE3D5] rounded text-xs font-mono font-bold border border-emerald-600">Authenticate</button>
+        </div>
       </div>
     </div>
   </div>
@@ -4493,6 +4563,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
           closeProjectDetail();
           return;
         }
+        const oam = document.getElementById('ownerAuthModal');
+        if (oam && oam.style.display !== 'none') {
+          closeOwnerModal();
+          return;
+        }
         if (isProjectsDrawerOpen) {
           closeProjectsDrawer();
           return;
@@ -4652,140 +4727,420 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.dismissWelcomeCard = dismissWelcomeCard;
 
     /* =====================================================================
-       4. PERSISTENT THOUGHTS JOURNAL & GUESTBOOK
+       4. PERSISTENT THOUGHTS JOURNAL & PRIVATE GUESTBOOK
        ===================================================================== */
     let isNotebookOpen = false;
     let currentNotePage = 1;
     const totalNotePages = 3;
     let selectedStickyColor = 'yellow';
 
-    const defaultThoughts = [
-      { id: 1, text: "Never stop building things from scratch. Ownership is where true mastery comes from.", name: "Senior Systems Dev", role: "Engineer", color: "yellow", likes: 14 },
-      { id: 2, text: "The 3D desk with the CRT monitor brought back pure 90s nostalgia. Keep shipping, Alvir!", name: "Sarah Chen", role: "Design Engineer", color: "mint", likes: 9 },
-      { id: 3, text: "Great research focus on Bloom's Taxonomy for LLMs. Automated pedagogy needs this.", name: "Dr. K. Rahman", role: "AI Researcher", color: "peach", likes: 21 },
-      { id: 4, text: "Loved EduLearn's Socket.io peer rooms. That's real engineering.", name: "Tariqul", role: "CSE Junior", color: "sky", likes: 8 }
-    ];
+    // Configured guestbook API endpoint. Must be explicitly set to the deployed Cloudflare Worker URL.
+    // For local development or production, define window.ALVIROS_GUESTBOOK_ENDPOINT before loading,
+    // or set CONFIGURED_GUESTBOOK_ENDPOINT below.
+    const CONFIGURED_GUESTBOOK_ENDPOINT = 'https://alviros-guestbook.alviros.workers.dev';
 
-    function loadSavedThoughts() {
+    function getGuestbookEndpoint() {
+      return (typeof window !== 'undefined' && window.ALVIROS_GUESTBOOK_ENDPOINT) || CONFIGURED_GUESTBOOK_ENDPOINT || '';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Secure token collection management: supports multiple private thoughts per visitor
+    function getVisitorTokens() {
       try {
-        const local = localStorage.getItem('alvir_visitor_thoughts');
-        if (local) {
-          const parsed = JSON.parse(local);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        const legacy = localStorage.getItem('alvir_guestbook_token');
+        let tokens = JSON.parse(localStorage.getItem('alvir_guestbook_tokens') || '[]');
+        if (!Array.isArray(tokens)) tokens = [];
+        if (legacy && typeof legacy === 'string' && !tokens.includes(legacy)) {
+          tokens.unshift(legacy);
+          localStorage.setItem('alvir_guestbook_tokens', JSON.stringify(tokens));
         }
+        return tokens;
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveVisitorToken(newToken) {
+      if (!newToken || typeof newToken !== 'string') return;
+      try {
+        const tokens = getVisitorTokens();
+        if (!tokens.includes(newToken)) {
+          tokens.unshift(newToken);
+          localStorage.setItem('alvir_guestbook_tokens', JSON.stringify(tokens));
+        }
+        localStorage.setItem('alvir_guestbook_token', newToken); // Keep latest for backward-compat
       } catch (e) {}
-      return defaultThoughts;
     }
 
-    let thoughtsList = loadSavedThoughts();
-
-    // ── JSONBin.io: free shared cloud storage for guestbook ──────────────
-    // All visitors share the same bin — thoughts persist across every device!
-    const BIN_ID  = '683259cfad19ca34f8f7c869';
-    const BIN_KEY = '$2a$10$a1X5jECE0YEZX1lXHb3Yp.iQ4ywnJ5wKMLXmhtOlTGH0SiT9BpW6';
-    const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
-
-    function saveLocal(list) {
-      try { localStorage.setItem('alvir_visitor_thoughts', JSON.stringify(list)); } catch (e) {}
-    }
-
-    async function syncFromCloud() {
-      try {
-        const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': BIN_KEY } });
-        if (!res.ok) return;
-        const json = await res.json();
-        const cloud = json.record;
-        if (Array.isArray(cloud) && cloud.length > 0) {
-          thoughtsList = cloud;
-          saveLocal(cloud);
-          renderThoughtsList();
-        }
-      } catch (e) { /* offline — keep local */ }
-    }
-
-    async function saveToCloud(list) {
-      try {
-        await fetch(BIN_URL, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'X-Master-Key': BIN_KEY },
-          body: JSON.stringify(list)
-        });
-      } catch (e) { /* offline — local save already done */ }
-    }
-
-    // Pull latest thoughts from cloud on page load
-    syncFromCloud();
-
-    function renderThoughtsList() {
-      const container = document.getElementById('pinnedThoughtsList');
+    async function loadVisitorOwnThought() {
+      const container = document.getElementById('visitorOwnThoughtContainer');
       if (!container) return;
-      container.innerHTML = '';
-      document.getElementById('thoughtCount').textContent = thoughtsList.length;
 
-      thoughtsList.forEach((t) => {
-        const colorStyles = {
-          yellow: 'bg-yellow-100/90 border-amber-300 text-slate-800',
-          peach: 'bg-rose-100/90 border-rose-300 text-slate-800',
-          mint: 'bg-emerald-100/90 border-emerald-300 text-slate-800',
-          sky: 'bg-sky-100/90 border-sky-300 text-slate-800'
-        }[t.color || 'yellow'] || 'bg-yellow-100/90 border-amber-300 text-slate-800';
-
-        const item = document.createElement('div');
-        item.className = `note-sticky p-3 pt-3.5 border ${colorStyles} flex items-start justify-between gap-2 transition`;
-        item.innerHTML = `
-          <span class="note-pin${(thoughtsList.indexOf(t) % 2) ? ' alt' : ''}"></span>
-          <div>
-            <div class="font-hand text-xl text-slate-900 leading-snug">"${t.text}"</div>
-            <div class="text-[11px] font-sans text-slate-600 mt-1 font-semibold">
-              — <span class="text-slate-900 font-bold">${t.name}</span> <span class="text-slate-500">(${t.role})</span>
-            </div>
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) {
+        container.innerHTML = `
+          <div class="p-3 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-xs font-sans text-[#44372E]/70 leading-relaxed">
+            🔒 <strong>Guestbook Backend Not Configured:</strong> The private guestbook requires a deployed Cloudflare Worker backend. To connect, set <code>window.ALVIROS_GUESTBOOK_ENDPOINT</code> or configure the endpoint in <code>index.html</code>.
           </div>
-          <button onclick="likeThought(${t.id})" class="px-2 py-1 bg-white/80 hover:bg-white text-[11px] font-sans font-bold text-rose-600 rounded-[3px] border border-slate-300/80 shadow-xs flex items-center gap-1 transition flex-shrink-0">
-            <span>❤️</span> <span>${t.likes || 1}</span>
-          </button>
         `;
-        container.appendChild(item);
-      });
-    }
-
-    function saveVisitorNote() {
-      const txt = document.getElementById('visitorNoteInput').value.trim();
-      const name = document.getElementById('visitorNameInput').value.trim() || 'Anonymous Visitor';
-      const role = document.getElementById('visitorRoleInput').value.trim() || 'Tech Explorer';
-
-      if (!txt) {
-        alert('Please write an honest thought before pinning!');
         return;
       }
 
-      const newEntry = {
-        id: Date.now(),
-        text: txt,
-        name: name,
-        role: role,
-        color: selectedStickyColor,
-        likes: 1
-      };
+      const tokens = getVisitorTokens();
+      if (tokens.length === 0) {
+        container.innerHTML = `
+          <div class="p-3 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-xs font-sans text-[#44372E]/70 leading-relaxed">
+            🔒 <strong>Private Guestbook:</strong> Thoughts left here are visible only to you on this device and Alvir. No public feed, no tracking. Pin your notes above to see them here!
+          </div>
+        `;
+        return;
+      }
 
-      thoughtsList.unshift(newEntry);
-      saveLocal(thoughtsList);
-      saveToCloud(thoughtsList);
+      try {
+        const res = await fetch(`${endpoint}/api/thoughts/my`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokens })
+        });
 
-      renderThoughtsList();
+        if (!res.ok) {
+          container.innerHTML = `<div class="text-xs text-amber-800 font-sans italic p-2 bg-[#FFFDF6] rounded">Unable to load your saved thoughts at this moment.</div>`;
+          return;
+        }
 
-      document.getElementById('visitorNoteInput').value = '';
-      document.getElementById('visitorNoteSuccess').classList.remove('hidden');
-      setTimeout(() => document.getElementById('visitorNoteSuccess').classList.add('hidden'), 4500);
+        const data = await res.json();
+        const thoughts = Array.isArray(data.thoughts) ? data.thoughts : [];
+
+        if (thoughts.length === 0) {
+          container.innerHTML = `
+            <div class="p-3 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-xs font-sans text-[#44372E]/70 leading-relaxed">
+              No private notes found for this device. Pin a thought above to etch it into the desk!
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = '';
+        thoughts.forEach((t) => {
+          const colorStyles = {
+            yellow: 'bg-yellow-100/90 border-amber-300 text-slate-800',
+            peach: 'bg-rose-100/90 border-rose-300 text-slate-800',
+            mint: 'bg-emerald-100/90 border-emerald-300 text-slate-800',
+            sky: 'bg-sky-100/90 border-sky-300 text-slate-800'
+          }[t.color || 'yellow'] || 'bg-yellow-100/90 border-amber-300 text-slate-800';
+
+          const formattedDate = new Date(t.created_at).toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+
+          const item = document.createElement('div');
+          item.className = `note-sticky p-3 pt-3.5 border ${colorStyles}`;
+          item.innerHTML = `
+            <span class="note-pin"></span>
+            <div class="font-hand text-xl text-slate-900 leading-snug">"${escapeHtml(t.text)}"</div>
+            <div class="text-[11px] font-sans text-slate-600 mt-2 font-semibold flex items-center justify-between">
+              <span>— <span class="text-slate-900 font-bold">${escapeHtml(t.nickname || 'Anonymous')}</span></span>
+              <span class="text-[10px] text-slate-500 font-mono">${formattedDate} (Private)</span>
+            </div>
+          `;
+          container.appendChild(item);
+        });
+
+        const footnote = document.createElement('div');
+        footnote.className = 'text-[9.5px] text-[#44372E]/50 font-mono pt-1 text-center';
+        footnote.textContent = '🔒 Notes are privately keyed to unguessable tokens stored in this browser\'s local storage.';
+        container.appendChild(footnote);
+
+      } catch (e) {
+        container.innerHTML = `<div class="text-xs text-[#44372E]/60 italic font-sans p-2 bg-[#FFFDF6] rounded">Your pinned thoughts are securely stored on Alvir's server. Connect to network to view them.</div>`;
+      }
     }
 
-    function likeThought(id) {
-      const item = thoughtsList.find(t => t.id === id);
-      if (item) {
-        item.likes = (item.likes || 0) + 1;
-        saveLocal(thoughtsList);
-        saveToCloud(thoughtsList);
-        renderThoughtsList();
+    async function saveVisitorNote() {
+      const noteEl = document.getElementById('visitorNoteInput');
+      const nameEl = document.getElementById('visitorNameInput');
+      const txt = noteEl ? noteEl.value.trim() : '';
+      const nickname = (nameEl && nameEl.value.trim()) || 'Anonymous Explorer';
+      const errorEl = document.getElementById('visitorNoteError');
+      const successEl = document.getElementById('visitorNoteSuccess');
+      const submitBtn = document.getElementById('btnSubmitThought');
+
+      if (errorEl) { errorEl.classList.add('hidden'); errorEl.textContent = ''; }
+      if (successEl) successEl.classList.add('hidden');
+
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) {
+        if (errorEl) {
+          errorEl.textContent = '⚠️ Guestbook service is not configured. Please set ALVIROS_GUESTBOOK_ENDPOINT to your deployed Cloudflare Worker URL. Your text has been preserved in the editor.';
+          errorEl.classList.remove('hidden');
+        }
+        return;
       }
+
+      if (!txt) {
+        if (errorEl) {
+          errorEl.textContent = 'Please write an honest thought before pinning.';
+          errorEl.classList.remove('hidden');
+        }
+        if (noteEl) noteEl.focus();
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>Delivering...</span> <span>⏳</span>';
+      }
+
+      try {
+        const res = await fetch(`${endpoint}/api/thoughts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: txt,
+            nickname: nickname,
+            color: selectedStickyColor || 'yellow'
+          })
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          const errMsg = data?.error || `Server responded with status ${res.status}`;
+          if (errorEl) {
+            errorEl.textContent = `⚠️ Submission failed: ${errMsg}. Your note was preserved in the editor so you can retry.`;
+            errorEl.classList.remove('hidden');
+          }
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span>Pin Private Thought</span> <span>📌</span>';
+          }
+          return;
+        }
+
+        if (data && data.token) {
+          saveVisitorToken(data.token);
+          if (noteEl) noteEl.value = '';
+          if (successEl) {
+            successEl.textContent = '✓ Your thought is securely pinned in Alvir\'s private guestbook!';
+            successEl.classList.remove('hidden');
+            setTimeout(() => { if (successEl) successEl.classList.add('hidden'); }, 5000);
+          }
+          await loadVisitorOwnThought();
+        }
+      } catch (err) {
+        if (errorEl) {
+          errorEl.textContent = `⚠️ Network error: Could not reach guestbook service. Your note was preserved so you can retry.`;
+          errorEl.classList.remove('hidden');
+        }
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<span>Pin Private Thought</span> <span>📌</span>';
+        }
+      }
+    }
+
+    // Owner administration interface
+    let ownerAuthTriggerEl = null;
+
+    function openOwnerModal() {
+      ownerAuthTriggerEl = document.activeElement;
+      const modal = document.getElementById('ownerAuthModal');
+      const err = document.getElementById('ownerAuthError');
+      const inp = document.getElementById('ownerKeyInput');
+      if (err) { err.textContent = ''; err.classList.add('hidden'); }
+      if (inp) inp.value = '';
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.removeAttribute('inert');
+        modal.removeAttribute('aria-hidden');
+      }
+      setTimeout(() => { if (inp) inp.focus(); }, 100);
+    }
+
+    function closeOwnerModal() {
+      const modal = document.getElementById('ownerAuthModal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.setAttribute('inert', '');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      if (ownerAuthTriggerEl && typeof ownerAuthTriggerEl.focus === 'function' && ownerAuthTriggerEl.isConnected) {
+        ownerAuthTriggerEl.focus();
+      }
+      ownerAuthTriggerEl = null;
+    }
+
+    async function submitOwnerLogin() {
+      const inp = document.getElementById('ownerKeyInput');
+      const err = document.getElementById('ownerAuthError');
+      const btn = document.getElementById('btnSubmitOwnerAuth');
+      const key = inp ? inp.value.trim() : '';
+
+      if (err) { err.textContent = ''; err.classList.add('hidden'); }
+
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) {
+        if (err) {
+          err.textContent = 'Guestbook service is not configured. Set ALVIROS_GUESTBOOK_ENDPOINT.';
+          err.classList.remove('hidden');
+        }
+        return;
+      }
+
+      if (!key) {
+        if (err) { err.textContent = 'Please enter the admin key.'; err.classList.remove('hidden'); }
+        return;
+      }
+
+      if (btn) { btn.disabled = true; btn.textContent = 'Verifying...'; }
+
+      try {
+        const res = await fetch(`${endpoint}/api/owner/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key })
+        });
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          if (err) {
+            err.textContent = data?.error || 'Invalid Admin Key';
+            err.classList.remove('hidden');
+          }
+          if (btn) { btn.disabled = false; btn.textContent = 'Authenticate'; }
+          return;
+        }
+
+        if (data && data.session_token) {
+          sessionStorage.setItem('alvir_owner_session', data.session_token);
+          closeOwnerModal();
+          await renderOwnerView();
+        }
+      } catch (e) {
+        if (err) {
+          err.textContent = 'Network error connecting to authentication endpoint.';
+          err.classList.remove('hidden');
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Authenticate'; }
+      }
+    }
+
+    async function renderOwnerView() {
+      const container = document.getElementById('ownerSectionContainer');
+      const listEl = document.getElementById('ownerThoughtsList');
+      const countEl = document.getElementById('ownerThoughtCount');
+      const session = sessionStorage.getItem('alvir_owner_session');
+
+      if (!session || !container) {
+        if (container) container.classList.add('hidden');
+        return;
+      }
+
+      container.classList.remove('hidden');
+
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) return;
+
+      try {
+        const res = await fetch(`${endpoint}/api/owner/thoughts`, {
+          headers: { 'Authorization': `Bearer ${session}` }
+        });
+
+        if (res.status === 401) {
+          sessionStorage.removeItem('alvir_owner_session');
+          container.classList.add('hidden');
+          return;
+        }
+
+        if (!res.ok) {
+          if (listEl) listEl.innerHTML = `<div class="text-xs text-rose-500 font-mono">Failed to fetch owner notes.</div>`;
+          return;
+        }
+
+        const data = await res.json();
+        const thoughts = Array.isArray(data.thoughts) ? data.thoughts : (Array.isArray(data) ? data : []);
+        if (countEl) countEl.textContent = thoughts.length;
+
+        if (thoughts.length === 0) {
+          if (listEl) listEl.innerHTML = `<div class="text-xs text-[#44372E]/60 italic font-mono p-2 bg-[#FFFDF6] rounded">No private visitor thoughts submitted yet.</div>`;
+          return;
+        }
+
+        if (listEl) {
+          listEl.innerHTML = '';
+          thoughts.forEach(t => {
+            const formattedDate = new Date(t.created_at).toLocaleDateString(undefined, {
+              month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+            const item = document.createElement('div');
+            item.className = 'p-3 bg-[#FFFDF6] border border-[#44372E]/30 rounded-[3px] text-xs font-mono space-y-1.5';
+            item.innerHTML = `
+              <div class="flex items-center justify-between text-[11px] text-[#44372E]/70 border-b border-[#44372E]/15 pb-1">
+                <span class="font-bold text-[#234034]">#${t.id} — ${escapeHtml(t.nickname || 'Anonymous')}</span>
+                <span>${formattedDate}</span>
+              </div>
+              <div class="font-sans text-sm text-[#44372E] pt-1">"${escapeHtml(t.text)}"</div>
+              <div class="flex justify-end pt-1">
+                <button type="button" onclick="deleteOwnerThought(${t.id})" class="px-2 py-0.5 bg-rose-700 hover:bg-rose-800 text-white text-[10px] rounded font-mono">Delete ✕</button>
+              </div>
+            `;
+            listEl.appendChild(item);
+          });
+        }
+      } catch (e) {
+        if (listEl) listEl.innerHTML = `<div class="text-xs text-rose-500 font-mono">Network error fetching thoughts.</div>`;
+      }
+    }
+
+    async function deleteOwnerThought(id) {
+      if (!confirm(`Delete thought #${id} permanently?`)) return;
+      const session = sessionStorage.getItem('alvir_owner_session');
+      if (!session) return;
+
+      const endpoint = getGuestbookEndpoint();
+      if (!endpoint) return;
+
+      try {
+        const res = await fetch(`${endpoint}/api/owner/thoughts/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${session}` }
+        });
+        if (res.ok) {
+          await renderOwnerView();
+          await loadVisitorOwnThought();
+        } else {
+          alert('Could not delete note.');
+        }
+      } catch (e) {
+        alert('Network error deleting note.');
+      }
+    }
+
+    async function ownerLogout() {
+      const session = sessionStorage.getItem('alvir_owner_session');
+      const endpoint = getGuestbookEndpoint();
+      if (session && endpoint) {
+        try {
+          await fetch(`${endpoint}/api/owner/logout`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session}` }
+          });
+        } catch (e) {}
+      }
+      sessionStorage.removeItem('alvir_owner_session');
+      const container = document.getElementById('ownerSectionContainer');
+      if (container) container.classList.add('hidden');
     }
 
     function selectStickyColor(c) {
@@ -4803,10 +5158,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
       setRoomInertForModal(true);
       showNotePage(1);
-      renderThoughtsList();
+      loadVisitorOwnThought();
+      if (sessionStorage.getItem('alvir_owner_session')) {
+        renderOwnerView();
+      }
       const input = document.getElementById('visitorNameInput');
       if (input) input.focus();
     }
+
     function closeNotebook() {
       isNotebookOpen = false;
       const nb = document.getElementById('notebookOverlay');
@@ -4821,11 +5180,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
       notebookTriggerEl = null;
     }
+
     function handleNotebookBackdropClick(e) {
       if (e.target.id === 'notebookOverlay') {
         closeNotebook();
       }
     }
+
     function showNotePage(page) {
       currentNotePage = page;
       document.getElementById('notePage1').style.display = page === 1 ? 'block' : 'none';
@@ -4835,6 +5196,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       document.getElementById('btnPrevPage').disabled = page === 1;
       document.getElementById('btnNextPage').disabled = page === totalNotePages;
     }
+
     function nextNotePage() { if (currentNotePage < totalNotePages) showNotePage(currentNotePage + 1); }
     function prevNotePage() { if (currentNotePage > 1) showNotePage(currentNotePage - 1); }
 
@@ -4844,8 +5206,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.nextNotePage = nextNotePage;
     window.prevNotePage = prevNotePage;
     window.saveVisitorNote = saveVisitorNote;
-    window.likeThought = likeThought;
     window.selectStickyColor = selectStickyColor;
+    window.openOwnerModal = openOwnerModal;
+    window.closeOwnerModal = closeOwnerModal;
+    window.submitOwnerLogin = submitOwnerLogin;
+    window.deleteOwnerThought = deleteOwnerThought;
+    window.ownerLogout = ownerLogout;
 
     /* =====================================================================
        5. INVISIBLE / CLICK-TO-REVEAL EMAIL & CONTACT MODALS
@@ -5539,6 +5905,83 @@ Duration: 2022 – Present (6th Semester)<br><br>
       updateVisualizerState();
     }
 
+    let currentBuiltinTrack = 1;
+    const BUILTIN_TRACKS = {
+      1: {
+        name: 'Cozy Lo-Fi',
+        title: '1. Cozy Lo-Fi Synth',
+        chords: [
+          [261.63, 329.63, 392.00], // C major
+          [220.00, 261.63, 329.63], // A minor
+          [174.61, 220.00, 261.63], // F major
+          [196.00, 246.94, 293.66]  // G major
+        ],
+        tempo: 1900
+      },
+      2: {
+        name: 'Sunset Chill',
+        title: '2. Sunset Chill Jazz',
+        chords: [
+          [293.66, 349.23, 440.00, 523.25], // Dm7
+          [196.00, 246.94, 293.66, 349.23], // G7
+          [261.63, 329.63, 392.00, 493.88], // Cmaj7
+          [220.00, 261.63, 329.63, 392.00]  // Am7
+        ],
+        tempo: 1900
+      }
+    };
+    let chordIdx = 0;
+
+    function updateTrackSelectorUI() {
+      const b1 = document.getElementById('btnTrack1');
+      const b2 = document.getElementById('btnTrack2');
+      if (b1) {
+        b1.style.backgroundColor = currentBuiltinTrack === 1 ? '#D7AD49' : '';
+        b1.style.color = currentBuiltinTrack === 1 ? '#000' : '';
+        b1.style.fontWeight = currentBuiltinTrack === 1 ? 'bold' : 'normal';
+      }
+      if (b2) {
+        b2.style.backgroundColor = currentBuiltinTrack === 2 ? '#D7AD49' : '';
+        b2.style.color = currentBuiltinTrack === 2 ? '#000' : '';
+        b2.style.fontWeight = currentBuiltinTrack === 2 ? 'bold' : 'normal';
+      }
+      const titleEl = document.getElementById('playerTrackTitle');
+      if (titleEl && !isCustomAudioLoaded) {
+        titleEl.textContent = BUILTIN_TRACKS[currentBuiltinTrack].title;
+      }
+    }
+
+    function selectBuiltinTrack(trackNum) {
+      if (trackNum !== 1 && trackNum !== 2) return;
+      if (isCustomAudioLoaded && customAudio) {
+        customAudio.pause();
+        customAudio.currentTime = 0;
+        isCustomAudioLoaded = false;
+      }
+      const wasPlaying = isSynthPlaying;
+      if (isSynthPlaying) {
+        stopSynthChords();
+      }
+      currentBuiltinTrack = trackNum;
+      chordIdx = 0;
+      updateTrackSelectorUI();
+      if (wasPlaying) {
+        startSynthChords();
+        const pp = document.getElementById('btnPlayPause');
+        if (pp) pp.textContent = '⏸ Pause';
+        syncAudioUI(true, BUILTIN_TRACKS[currentBuiltinTrack].name);
+      } else {
+        const walkmanText = document.getElementById('audioStatusText');
+        if (walkmanText) walkmanText.textContent = BUILTIN_TRACKS[currentBuiltinTrack].name;
+      }
+    }
+    window.selectBuiltinTrack = selectBuiltinTrack;
+    window.BUILTIN_TRACKS = BUILTIN_TRACKS;
+    Object.defineProperty(window, 'currentBuiltinTrack', {
+      get: () => currentBuiltinTrack,
+      set: (v) => { currentBuiltinTrack = v; }
+    });
+
     function toggleMusicPlayback() {
       if (isCustomAudioLoaded) {
         if (customAudio.paused) {
@@ -5557,54 +6000,53 @@ Duration: 2022 – Present (6th Semester)<br><br>
         } else {
           startSynthChords();
           document.getElementById('btnPlayPause').textContent = '⏸ Pause';
-          syncAudioUI(true, 'Cozy Lo-Fi');
+          syncAudioUI(true, BUILTIN_TRACKS[currentBuiltinTrack].name);
         }
       }
     }
 
     function stopMusicPlayback() {
-      if (isCustomAudioLoaded) {
+      if (isCustomAudioLoaded && customAudio) {
         customAudio.pause();
         customAudio.currentTime = 0;
       }
       stopSynthChords();
-      document.getElementById('btnPlayPause').textContent = '▶ Play';
+      const pp = document.getElementById('btnPlayPause');
+      if (pp) pp.textContent = '▶ Play';
       syncAudioUI(false, 'Music Muted');
       stopVisualizerAnimation();
     }
 
-    const chords = [
-      [261.63, 329.63, 392.00], // C major
-      [220.00, 261.63, 329.63], // A minor
-      [174.61, 220.00, 261.63], // F major
-      [196.00, 246.94, 293.66]  // G major
-    ];
-    let chordIdx = 0;
-
     function startSynthChords() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
+      clearInterval(synthInterval);
       isSynthPlaying = true;
       updateVisualizerState();
+      updateTrackSelectorUI();
+
+      const track = BUILTIN_TRACKS[currentBuiltinTrack] || BUILTIN_TRACKS[1];
+      const chordsList = track.chords;
 
       synthInterval = setInterval(() => {
         if (!isSynthPlaying) return;
-        const cur = chords[chordIdx];
-        chordIdx = (chordIdx + 1) % chords.length;
+        const cur = chordsList[chordIdx];
+        chordIdx = (chordIdx + 1) % chordsList.length;
 
         cur.forEach(freq => {
           const osc = audioCtx.createOscillator();
           const gain = audioCtx.createGain();
           osc.type = 'sine';
           osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-          gain.gain.setValueAtTime(0.018, audioCtx.currentTime);
+          // +20% volume increase from baseline 0.018 to 0.0216
+          gain.gain.setValueAtTime(0.0216, audioCtx.currentTime);
           gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.8);
           osc.connect(gain);
           gain.connect(audioCtx.destination);
           osc.start();
           osc.stop(audioCtx.currentTime + 1.8);
         });
-      }, 1900);
+      }, track.tempo);
     }
 
     function stopSynthChords() {
@@ -5618,12 +6060,31 @@ Duration: 2022 – Present (6th Semester)<br><br>
       hasAttemptedAutoplay = true;
       if (!isSynthPlaying && !isCustomAudioLoaded) {
         startSynthChords();
-        syncAudioUI(true, 'Cozy Lo-Fi');
+        syncAudioUI(true, BUILTIN_TRACKS[currentBuiltinTrack].name);
       }
     }
     window.addEventListener('click', attemptMusicAutoStart, { once: true });
     window.addEventListener('keydown', attemptMusicAutoStart, { once: true });
     window.addEventListener('touchstart', attemptMusicAutoStart, { once: true });
+
+    // Best-effort page lifecycle audio cleanup (handles tab close, reload, navigation, and bfcache freeze)
+    function cleanupAudioLifecycle() {
+      stopMusicPlayback();
+      if (audioCtx && audioCtx.state !== 'closed') {
+        try { audioCtx.suspend(); } catch (e) {}
+      }
+    }
+    window.addEventListener('pagehide', cleanupAudioLifecycle);
+    window.addEventListener('beforeunload', cleanupAudioLifecycle);
+
+    // Resuming state when restored from back-forward cache (bfcache)
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted && isAudioActive()) {
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+      }
+    });
 
     let vizBars = null;
     function getVizBars() {
@@ -5981,15 +6442,18 @@ Duration: 2022 – Present (6th Semester)<br><br>
     function toggleProfileCard(e) {
       if (e) e.stopPropagation();
       const pc = document.getElementById('profileCard');
+      const plate = document.getElementById('profilePlate');
       const isOpen = pc.classList.toggle('pp-open');
       if (isOpen) {
         pc.removeAttribute('inert');
         pc.removeAttribute('aria-hidden');
+        if (plate) plate.setAttribute('aria-expanded', 'true');
         const first = pc.querySelector('a, button');
         if (first) first.focus();
       } else {
         pc.setAttribute('inert', '');
         pc.setAttribute('aria-hidden', 'true');
+        if (plate) plate.setAttribute('aria-expanded', 'false');
       }
     }
     function closeProfileCard() {
@@ -5999,12 +6463,23 @@ Duration: 2022 – Present (6th Semester)<br><br>
       pc.setAttribute('inert', '');
       pc.setAttribute('aria-hidden', 'true');
       const plate = document.getElementById('profilePlate');
-      if (plate && pc.contains(document.activeElement)) plate.focus();
+      if (plate) {
+        plate.setAttribute('aria-expanded', 'false');
+        if (pc.contains(document.activeElement)) plate.focus();
+      }
     }
     document.addEventListener('click', function (e) {
       const pc = document.getElementById('profileCard');
-      if (pc.classList.contains('pp-open') && !pc.contains(e.target) && e.target.closest('#profilePlate') === null) {
+      if (pc && pc.classList.contains('pp-open') && !pc.contains(e.target) && e.target.closest('#profilePlate') === null) {
         closeProfileCard();
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        const pc = document.getElementById('profileCard');
+        if (pc && pc.classList.contains('pp-open')) {
+          closeProfileCard();
+        }
       }
     });
     window.toggleProfileCard = toggleProfileCard;

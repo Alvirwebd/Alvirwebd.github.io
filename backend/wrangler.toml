@@ -1,0 +1,14 @@
+name = "alviros-guestbook"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Production environment variables and secrets (configured via 'wrangler secret put ADMIN_KEY')
+[vars]
+ALLOWED_ORIGIN = "https://alvirwebd.github.io"
+
+# Cloudflare D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "alviros-guestbook-db"
+database_id = "610a9a8b-75cb-4442-ae18-cf436eee0556"
+
