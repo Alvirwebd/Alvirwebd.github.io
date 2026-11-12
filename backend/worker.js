@@ -351,6 +351,131 @@ export default {
         return jsonResponse({ success: true }, 200, corsHeaders);
       }
 
+      // =====================================================================
+      // STAGE 5.7: VISITOR IP TRACKING & ANONYMOUS ANALYTICS
+      // =====================================================================
+
+      // 7. POST /api/analytics/visit (Record visit: raw IP & decoupled anonymous visit)
+      if (request.method === 'POST' && path === '/api/analytics/visit') {
+        const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+
+        const rateLimitOk = await checkAnalyticsRateLimit(env.DB, clientIp);
+        if (!rateLimitOk) {
+          return jsonResponse({ error: 'Rate limit exceeded.' }, 429, corsHeaders);
+        }
+
+        let body = {};
+        try {
+          body = await readSafeJson(request, 2048) || {};
+        } catch (_) {}
+
+        let aid = typeof body.aid === 'string' ? body.aid.trim().slice(0, 64) : '';
+        if (!aid) {
+          aid = 'aid_' + Math.random().toString(36).substring(2, 15);
+        }
+
+        let visitPath = typeof body.path === 'string' ? body.path.trim().slice(0, 128) : '/';
+        if (!visitPath.startsWith('/')) visitPath = '/' + visitPath;
+
+        const userAgent = (request.headers.get('User-Agent') || '').slice(0, 256);
+        const aidHash = await sha256Hex('aid_' + aid);
+
+        // 1. Check if anonymous visitor has visited before (for unique vs returning metrics)
+        const prev = await env.DB.prepare(
+          'SELECT 1 FROM anonymous_visits WHERE visitor_aid_hash = ? LIMIT 1'
+        ).bind(aidHash).first();
+        const isReturning = prev ? 1 : 0;
+
+        // 2. Insert into anonymous_visits (Decoupled: zero IP stored here)
+        await env.DB.prepare(
+          'INSERT INTO anonymous_visits (visitor_aid_hash, path, is_returning) VALUES (?, ?, ?)'
+        ).bind(aidHash, visitPath, isReturning).run();
+
+        // 3. Insert into visitor_ip_records (Decoupled: zero aid or tokens stored here)
+        await env.DB.prepare(
+          'INSERT INTO visitor_ip_records (ip, path, user_agent) VALUES (?, ?, ?)'
+        ).bind(clientIp, visitPath, userAgent).run();
+
+        return jsonResponse({ success: true, recorded: true }, 200, corsHeaders);
+      }
+
+      // 8. GET /api/owner/analytics (Aggregated anonymous stats for authenticated owner)
+      if (request.method === 'GET' && path === '/api/owner/analytics') {
+        const sessionToken = extractToken(request);
+        const isOwner = await verifyOwnerSession(env.DB, sessionToken);
+        if (!isOwner) {
+          return jsonResponse({ error: 'Unauthorized: Valid owner session required.' }, 401, corsHeaders);
+        }
+
+        const totalRow = await env.DB.prepare('SELECT COUNT(*) as count FROM anonymous_visits').first();
+        const uniqueRow = await env.DB.prepare('SELECT COUNT(DISTINCT visitor_aid_hash) as count FROM anonymous_visits').first();
+        const returningRow = await env.DB.prepare('SELECT COUNT(DISTINCT visitor_aid_hash) as count FROM anonymous_visits WHERE is_returning = 1').first();
+        const todayRow = await env.DB.prepare("SELECT COUNT(*) as count FROM anonymous_visits WHERE visit_date = strftime('%Y-%m-%d', 'now')").first();
+
+        const trendsRes = await env.DB.prepare(
+          "SELECT visit_date as date, COUNT(*) as visits, COUNT(DISTINCT visitor_aid_hash) as uniques FROM anonymous_visits GROUP BY visit_date ORDER BY visit_date DESC LIMIT 14"
+        ).all();
+
+        const pagesRes = await env.DB.prepare(
+          "SELECT path, COUNT(*) as count FROM anonymous_visits GROUP BY path ORDER BY count DESC LIMIT 10"
+        ).all();
+
+        return jsonResponse({
+          success: true,
+          overview: {
+            total_visits: totalRow ? totalRow.count : 0,
+            unique_visitors: uniqueRow ? uniqueRow.count : 0,
+            returning_visitors: returningRow ? returningRow.count : 0,
+            visits_today: todayRow ? todayRow.count : 0
+          },
+          daily_trends: trendsRes?.results || [],
+          top_pages: pagesRes?.results || []
+        }, 200, corsHeaders);
+      }
+
+      // 9. GET /api/owner/analytics/ips (Raw visitor IP records for authenticated owner only)
+      if (request.method === 'GET' && path === '/api/owner/analytics/ips') {
+        const sessionToken = extractToken(request);
+        const isOwner = await verifyOwnerSession(env.DB, sessionToken);
+        if (!isOwner) {
+          return jsonResponse({ error: 'Unauthorized: Valid owner session required.' }, 401, corsHeaders);
+        }
+
+        let limit = parseInt(url.searchParams.get('limit') || '50', 10);
+        if (isNaN(limit) || limit <= 0) limit = 50;
+        if (limit > 100) limit = 100;
+
+        const { results } = await env.DB.prepare(
+          'SELECT id, ip, path, user_agent, created_at FROM visitor_ip_records ORDER BY id DESC LIMIT ?'
+        ).bind(limit).all();
+
+        return jsonResponse({ success: true, records: results || [] }, 200, corsHeaders);
+      }
+
+      // 10. POST /api/owner/analytics/cleanup (Retention cleanup for raw IP records)
+      if (request.method === 'POST' && path === '/api/owner/analytics/cleanup') {
+        const sessionToken = extractToken(request);
+        const isOwner = await verifyOwnerSession(env.DB, sessionToken);
+        if (!isOwner) {
+          return jsonResponse({ error: 'Unauthorized: Valid owner session required.' }, 401, corsHeaders);
+        }
+
+        let body = {};
+        try {
+          body = await readSafeJson(request, 1024) || {};
+        } catch (_) {}
+
+        let days = parseInt(body.days || '30', 10);
+        if (isNaN(days) || days < 1) days = 30;
+
+        const result = await env.DB.prepare(
+          "DELETE FROM visitor_ip_records WHERE created_at < datetime('now', '-' || ? || ' days')"
+        ).bind(days).run();
+
+        const purged = result.meta ? result.meta.changes : 0;
+        return jsonResponse({ success: true, purged, retention_days: days }, 200, corsHeaders);
+      }
+
       return jsonResponse({ error: 'Endpoint not found.' }, 404, corsHeaders);
 
     } catch (err) {
@@ -444,6 +569,29 @@ async function checkSubmissionRateLimit(db, clientIp) {
   const res = await stmt.bind(ipHash, now + windowSeconds, now, now, now + windowSeconds).first();
   if (!res) return false;
   return res.count <= maxSubmissions;
+}
+
+/**
+ * Atomic rate limiting for analytics visits (max 30 pings per 10 minutes per IP).
+ */
+async function checkAnalyticsRateLimit(db, clientIp) {
+  const now = Math.floor(Date.now() / 1000);
+  const ipHash = await sha256Hex('analytics_' + clientIp);
+  const windowSeconds = 600; // 10 minutes
+  const maxPings = 30;
+
+  const stmt = db.prepare(`
+    INSERT INTO rate_limits (ip_hash, count, reset_at)
+    VALUES (?, 1, ?)
+    ON CONFLICT(ip_hash) DO UPDATE SET
+      count = CASE WHEN reset_at < ? THEN 1 ELSE count + 1 END,
+      reset_at = CASE WHEN reset_at < ? THEN ? ELSE reset_at END
+    RETURNING count, reset_at;
+  `);
+
+  const res = await stmt.bind(ipHash, now + windowSeconds, now, now, now + windowSeconds).first();
+  if (!res) return false;
+  return res.count <= maxPings;
 }
 
 /**
