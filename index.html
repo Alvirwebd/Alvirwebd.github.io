@@ -1062,6 +1062,13 @@
       border-right-color: #ffffff;
       border-bottom-color: #ffffff;
     }
+    /* Active tab: the same bevel inverted, exactly like a pressed Win95 button. */
+    #taskbarTabs .tab-active {
+      border-top-color: #000000;
+      border-left-color: #000000;
+      border-right-color: #ffffff;
+      border-bottom-color: #ffffff;
+    }
 
     .retro-taskbar {
       height: 38px;
@@ -4410,26 +4417,51 @@ Duration: 2022 – Present (6th Semester)<br><br>
       maxBtn.setAttribute('aria-pressed', maxed ? 'true' : 'false');
     }
 
+    /* The active window is the topmost open, non-minimized one. */
+    function activeWindowId() {
+      let active = null;
+      let topZ = -Infinity;
+      WIN_ORDER.forEach(id => {
+        const el = document.getElementById(id);
+        if (!windowOpen(el)) return;
+        const z = parseInt(el.style.zIndex, 10) || 0;
+        if (z >= topZ) { topZ = z; active = id; }
+      });
+      return active;
+    }
+
     function updateTaskbarTabs() {
       const bar = document.getElementById('taskbarTabs');
       if (!bar) return;
+      const focusBefore = document.activeElement && document.activeElement.dataset
+        ? document.activeElement.dataset.window
+        : null;
+      const activeId = activeWindowId();
       bar.innerHTML = '';
       for (const [id, meta] of Object.entries(windowMeta)) {
         const win = document.getElementById(id);
         if (!win || win.style.display === 'none') continue;
         const minimized = win.classList.contains('is-minimized');
+        const isActive = !minimized && id === activeId;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.dataset.window = id;
         btn.className = 'px-2.5 py-1 bg-[#c0c0c0] border-t-2 border-l-2 border-white border-r-2 border-b-2 border-black text-[11px] font-bold text-black flex items-center gap-1 active:bg-[#a0a0a0]' +
-          (minimized ? ' tab-minimized' : '');
+          (minimized ? ' tab-minimized' : '') +
+          (isActive ? ' tab-active' : '');
         btn.innerHTML = '<span>' + meta.icon + '</span><span>' + meta.title + '</span>';
         btn.setAttribute('aria-label', meta.title + (minimized ? ' (minimized)' : ''));
+        if (isActive) btn.setAttribute('aria-current', 'true');
         btn.onclick = function () {
           if (win.classList.contains('is-minimized')) window.restoreWindow(id);
           else window.focusWindow(id);
         };
         bar.appendChild(btn);
+      }
+      /* Rebuilding drops focus; hand it back to the same tab if it had it. */
+      if (focusBefore) {
+        const again = bar.querySelector('button[data-window="' + focusBefore + '"]');
+        if (again) again.focus();
       }
     }
 
@@ -4438,6 +4470,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       if (!el) return;
       highestZ += 2;
       el.style.zIndex = highestZ;
+      updateTaskbarTabs();
     };
 
     window.openWindow = function (id) {
@@ -4459,6 +4492,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.closeWindow = function (id) {
       const el = document.getElementById(id);
       if (!el) return;
+      if (dragState && dragState.el === el) endDrag();
       el.style.display = 'none';
       el.classList.remove('is-minimized');
       updateTaskbarTabs();
@@ -4476,6 +4510,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.minimizeWindow = function (id) {
       const el = document.getElementById(id);
       if (!el) return;
+      if (dragState && dragState.el === el) endDrag();
       if (windowOpen(el)) el.classList.add('is-minimized');
       else window.restoreWindow(id);
       updateTaskbarTabs();
@@ -4523,6 +4558,14 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const el = document.getElementById(winId);
       if (!el || el.style.display === 'none' || el.classList.contains('is-minimized') || el.classList.contains('is-maximized')) return;
       if (e.pointerType === 'mouse' && typeof e.button === 'number' && e.button > 0) return;
+      /* One drag at a time: a second pointer must not hijack an in-flight one.
+         A leftover drag from the same pointer (or a fallback-era drag that never
+         saw a matching pointerup) is closed out first. */
+      if (dragState) {
+        const samePointer = e.pointerId == null || dragState.pointerId === null || e.pointerId === dragState.pointerId;
+        if (!samePointer) return;
+        endDrag();
+      }
       const crt = crtEl();
       if (!crt) return;
       const p = pointerPoint(e);
@@ -4530,6 +4573,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const r = el.getBoundingClientRect();
       const w = r.width || el.offsetWidth;
       const h = r.height || el.offsetHeight;
+      const captureEl = (e.currentTarget && e.currentTarget.setPointerCapture) ? e.currentTarget : null;
       dragState = {
         el: el,
         id: winId,
@@ -4537,7 +4581,9 @@ Duration: 2022 – Present (6th Semester)<br><br>
         dx: (p.clientX || 0) - r.left,
         dy: (p.clientY || 0) - r.top,
         w: w,
-        h: h
+        h: h,
+        moved: false,
+        captureEl: captureEl
       };
       el.style.left = Math.round(r.left - base.left) + 'px';
       el.style.top = Math.round(r.top - base.top) + 'px';
@@ -4545,8 +4591,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
       el.style.bottom = 'auto';
       if (w) el.style.width = Math.round(w) + 'px';
       window.focusWindow(winId);
-      if (e.currentTarget && e.currentTarget.setPointerCapture && dragState.pointerId !== null) {
-        try { e.currentTarget.setPointerCapture(dragState.pointerId); } catch (err) { /* older engines */ }
+      if (captureEl && dragState.pointerId !== null) {
+        try { captureEl.setPointerCapture(dragState.pointerId); } catch (err) { /* older engines */ }
       }
       document.body.classList.add('win-dragging');
       el.classList.add('is-dragging');
@@ -4567,20 +4613,30 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const y = Math.max(4, Math.min((p.clientY || 0) - base.top - dragState.dy, maxY));
       dragState.el.style.left = Math.round(x) + 'px';
       dragState.el.style.top = Math.round(y) + 'px';
+      dragState.moved = true;
       if (e.cancelable) e.preventDefault();
     }
 
-    function endDrag() {
-      if (!dragState) return;
-      dragState.el.classList.remove('is-dragging');
-      dragState.el.dataset.userPlaced = '1';
-      dragState = null;
+    /* Safe to call any number of times, from pointerup, pointercancel,
+       lostpointercapture or a window being closed mid-drag. */
+    function endDrag(e) {
       document.body.classList.remove('win-dragging');
+      const active = dragState;
+      if (!active) return;
+      if (e && e.pointerId != null && active.pointerId !== null && e.pointerId !== active.pointerId) return;
+      dragState = null;
+      const captureEl = active.captureEl;
+      if (captureEl && active.pointerId !== null && captureEl.releasePointerCapture) {
+        try { captureEl.releasePointerCapture(active.pointerId); } catch (err) { /* already released */ }
+      }
+      active.el.classList.remove('is-dragging');
+      if (active.moved) active.el.dataset.userPlaced = '1';
     }
 
     window.addEventListener('pointermove', moveDrag, { passive: false });
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
+    window.addEventListener('lostpointercapture', endDrag);
 
     /* Fallback for engines without Pointer Events (old iOS Safari, old Edge). */
     if (!window.PointerEvent) {
