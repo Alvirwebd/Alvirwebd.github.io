@@ -30,3 +30,31 @@ CREATE TABLE IF NOT EXISTS owner_sessions (
   session_hash TEXT PRIMARY KEY,
   expires_at INTEGER NOT NULL
 );
+
+-- ============================================================================
+-- STAGE 5.7: VISITOR IP TRACKING & ANONYMOUS ANALYTICS
+-- ============================================================================
+
+-- Raw Visitor IP Records (30-day default retention, owner-only access)
+CREATE TABLE IF NOT EXISTS visitor_ip_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ip TEXT NOT NULL,
+  path TEXT NOT NULL DEFAULT '/',
+  user_agent TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_ip_created_at ON visitor_ip_records(created_at);
+
+-- Anonymous Visitor Analytics (Decoupled from IPs, privacy-friendly unique visitor tracking)
+CREATE TABLE IF NOT EXISTS anonymous_visits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  visitor_aid_hash TEXT NOT NULL,
+  path TEXT NOT NULL DEFAULT '/',
+  is_returning INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  visit_date TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_anon_visits_date ON anonymous_visits(visit_date);
+CREATE INDEX IF NOT EXISTS idx_anon_visits_aid_hash ON anonymous_visits(visitor_aid_hash);
