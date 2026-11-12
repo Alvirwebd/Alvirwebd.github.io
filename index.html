@@ -4044,20 +4044,36 @@ Duration: 2022 – Present (6th Semester)<br><br>
         _wc.setAttribute('aria-hidden', 'true');
       }
 
+      clearTimeout(workstationEntryTimer);
+      clearTimeout(workstationTransitionTimer);
+      workstationEntryTimer = null;
+      workstationTransitionTimer = null;
+
+      const currentSession = ++workstationSessionId;
       isWorkstationTransitioning = true;
-      setTimeout(() => {
-        document.getElementById('monitorContainer').classList.add('active-workstation');
+
+      workstationEntryTimer = setTimeout(() => {
+        workstationEntryTimer = null;
+        if (!isAtWorkstation || workstationSessionId !== currentSession) return;
+        const mc = document.getElementById('monitorContainer');
+        if (mc) mc.classList.add('active-workstation');
         if (!hasOpenedProjects) {
           openWindow('winProjects');
           hasOpenedProjects = true;
         }
-        setTimeout(() => {
-          isWorkstationTransitioning = false;
+        workstationTransitionTimer = setTimeout(() => {
+          workstationTransitionTimer = null;
+          if (workstationSessionId === currentSession && isAtWorkstation) {
+            isWorkstationTransitioning = false;
+          }
         }, 500);
       }, 420);
     }
     let hasOpenedProjects = false;
     let isWorkstationTransitioning = false;
+    let workstationEntryTimer = null;
+    let workstationTransitionTimer = null;
+    let workstationSessionId = 0;
 
     let lastWorkstationExitTime = 0;
 
@@ -4066,6 +4082,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
         if (typeof e.stopPropagation === 'function') e.stopPropagation();
         if (typeof e.preventDefault === 'function') e.preventDefault();
       }
+      clearTimeout(workstationEntryTimer);
+      clearTimeout(workstationTransitionTimer);
+      workstationEntryTimer = null;
+      workstationTransitionTimer = null;
+      workstationSessionId++;
+
       if (!isAtWorkstation) return;
       isAtWorkstation = false;
       isWorkstationTransitioning = false;
