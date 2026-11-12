@@ -1089,83 +1089,6 @@
     }
     .book-scroll::-webkit-scrollbar { width: 6px; }
     .book-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-
-    /* =========================================================================
-       ULTIMATE MOBILE RESPONSIVENESS (iOS Safari & Android Chrome)
-       ========================================================================= */
-    @media (max-width: 640px) {
-      /* Safe area insets for notched iPhones and gesture navigation pills */
-      #roomHeader {
-        top: max(10px, env(safe-area-inset-top)) !important;
-        left: max(10px, env(safe-area-inset-left)) !important;
-        right: max(10px, env(safe-area-inset-right)) !important;
-      }
-      #roomFooter {
-        bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 6px)) !important;
-        left: max(8px, env(safe-area-inset-left)) !important;
-        right: max(8px, env(safe-area-inset-right)) !important;
-      }
-      /* Compact header elements to prevent wrapping on narrow screens (320-390px) */
-      #profilePlate {
-        padding: 5px 9px !important;
-        gap: 6px !important;
-      }
-      #profilePlate .lw-ico {
-        display: none !important;
-      }
-      #btnAudioToggle {
-        padding: 5px 9px !important;
-        gap: 6px !important;
-      }
-      /* In-room 3D floating beacons on mobile: compact, thumb-friendly, no overlap */
-      #notebookPill .paper-card {
-        padding: 6px 10px !important;
-        gap: 6px !important;
-        max-width: 165px !important;
-      }
-      #clickPrompt {
-        top: 36% !important;
-      }
-      #clickPrompt .charcoal-card {
-        padding: 7px 10px !important;
-        max-width: 195px !important;
-      }
-      /* Notebook modal on mobile: full viewport ergonomics */
-      #notebookOverlay {
-        padding: 8px !important;
-      }
-      .notebook-book {
-        max-height: 94vh !important;
-        border-left-width: 14px !important;
-        border-radius: 8px !important;
-      }
-      .spiral-binding {
-        left: -14px !important;
-        width: 12px !important;
-      }
-      .spiral-ring {
-        width: 14px !important;
-        height: 6px !important;
-      }
-      /* Retro CRT desktop on mobile */
-      .crt-bezel {
-        height: 98vh !important;
-        max-height: none !important;
-        border-width: 4px !important;
-        border-radius: 12px !important;
-        padding: 0 !important;
-      }
-      .retro-window {
-        top: 38px !important;
-        left: 4px !important;
-        right: 4px !important;
-        max-height: calc(100vh - 82px) !important;
-      }
-      /* Touch tap responsiveness */
-      button, a, .freud-tab, .beacon-pod {
-        touch-action: manipulation !important;
-      }
-    }
   </style>
 </head>
 <body class="relative w-full h-full">
@@ -2400,58 +2323,10 @@ Duration: 2022 – Present (6th Semester)<br><br>
     const CAM_MONITOR_POS = new THREE.Vector3(0, 0.65, 1.55);
     const CAM_MONITOR_TARGET = new THREE.Vector3(0, 0.65, 0.1);
 
-    let isAtWorkstation = false;
-    let cameraLerpProgress = 1;
-    let camStartPos = CAM_ROOM_POS.clone();
-    let camEndPos = CAM_ROOM_POS.clone();
-    let camStartTarget = CAM_ROOM_TARGET.clone();
-    let camEndTarget = CAM_ROOM_TARGET.clone();
+    camera.position.copy(CAM_ROOM_POS);
+    camera.lookAt(CAM_ROOM_TARGET);
 
-    function updateCameraViewport() {
-      const aspect = window.innerWidth / window.innerHeight;
-      camera.aspect = aspect;
-
-      if (aspect < 0.8) {
-        // Portrait mobile (iPhone / Android)
-        camera.fov = Math.min(78, 54 + (0.8 - aspect) * 45);
-        CAM_ROOM_POS.set(0, 2.25, 5.7);
-        CAM_ROOM_TARGET.set(0, 0.40, 0);
-        CAM_MONITOR_POS.set(0, 0.72, 1.95);
-        CAM_MONITOR_TARGET.set(0, 0.72, 0.1);
-      } else if (aspect < 1.2) {
-        // Square / iPad / Tablet portrait
-        camera.fov = 50;
-        CAM_ROOM_POS.set(0, 2.0, 4.9);
-        CAM_ROOM_TARGET.set(0, 0.42, 0);
-        CAM_MONITOR_POS.set(0, 0.68, 1.75);
-        CAM_MONITOR_TARGET.set(0, 0.68, 0.1);
-      } else {
-        // Desktop / Laptop widescreen
-        camera.fov = 45;
-        CAM_ROOM_POS.set(0, 1.8, 4.2);
-        CAM_ROOM_TARGET.set(0, 0.45, 0);
-        CAM_MONITOR_POS.set(0, 0.65, 1.55);
-        CAM_MONITOR_TARGET.set(0, 0.65, 0.1);
-      }
-
-      camera.updateProjectionMatrix();
-
-      if (!isAtWorkstation) {
-        if (camEndPos) camEndPos.copy(CAM_ROOM_POS);
-        if (camEndTarget) camEndTarget.copy(CAM_ROOM_TARGET);
-        camera.position.copy(CAM_ROOM_POS);
-        camera.lookAt(CAM_ROOM_TARGET);
-      }
-    }
-
-    updateCameraViewport();
-
-    let renderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'default' });
-    } catch (e) {
-      renderer = new THREE.WebGLRenderer({ antialias: false });
-    }
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -2661,6 +2536,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
     /* =====================================================================
        3. CAMERA LERP & INTERACTION
        ===================================================================== */
+    let isAtWorkstation = false;
+    let cameraLerpProgress = 1;
+    let camStartPos = camera.position.clone();
+    let camEndPos = CAM_ROOM_POS.clone();
+    let camStartTarget = CAM_ROOM_TARGET.clone();
+    let camEndTarget = CAM_ROOM_TARGET.clone();
+
     const mouse = { x: 0, y: 0 };
     window.addEventListener('mousemove', (e) => {
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -2750,18 +2632,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
     }
 
-    let lastTouchActionTime = 0;
+    window.addEventListener('click', (e) => handle3DClick(e.clientX, e.clientY, e));
     window.addEventListener('touchend', (e) => {
       if (e.changedTouches && e.changedTouches.length > 0) {
-        lastTouchActionTime = Date.now();
         const t = e.changedTouches[0];
         handle3DClick(t.clientX, t.clientY, e);
       }
-    }, { passive: true });
-
-    window.addEventListener('click', (e) => {
-      if (Date.now() - lastTouchActionTime < 450) return;
-      handle3DClick(e.clientX, e.clientY, e);
     });
 
     window.addEventListener('keydown', (e) => {
@@ -3429,12 +3305,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
     animate();
 
     window.addEventListener('resize', () => {
-      if (typeof updateCameraViewport === 'function') {
-        updateCameraViewport();
-      } else {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-      }
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
   </script>
@@ -3480,23 +3352,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
           v.project(camera);
           const x = (v.x * 0.5 + 0.5) * window.innerWidth;
           const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
-          let l, t;
-          if (window.innerWidth < 640) {
-            // Mobile: center directly over the notebook prop, slightly above the spiral
-            l = Math.round(x - pill.offsetWidth * 0.5);
-            t = Math.round(y - pill.offsetHeight - 14);
-            const cl = Math.max(8, Math.min(l, window.innerWidth - pill.offsetWidth - 8));
-            const ct = Math.max(64, Math.min(t, window.innerHeight - pill.offsetHeight - 140));
-            const sig = cl + ',' + ct;
-            if (sig !== last) { last = sig; pill.style.left = cl + 'px'; pill.style.top = ct + 'px'; }
-          } else {
-            l = Math.round(x - pill.offsetWidth - 34);
-            t = Math.round(y - pill.offsetHeight - 30);
-            const cl = Math.max(10, Math.min(l, window.innerWidth - pill.offsetWidth - 10));
-            const ct = Math.max(64, Math.min(t, window.innerHeight - pill.offsetHeight - 120));
-            const sig = cl + ',' + ct;
-            if (sig !== last) { last = sig; pill.style.left = cl + 'px'; pill.style.top = ct + 'px'; }
-          }
+          const l = Math.round(x - pill.offsetWidth - 34);
+          const t = Math.round(y - pill.offsetHeight - 30);
+          // clamp inside the viewport so the beacon never gets cut off
+          const cl = Math.max(10, Math.min(l, window.innerWidth - pill.offsetWidth - 10));
+          const ct = Math.max(64, Math.min(t, window.innerHeight - pill.offsetHeight - 120));
+          const sig = cl + ',' + ct;
+          if (sig !== last) { last = sig; pill.style.left = cl + 'px'; pill.style.top = ct + 'px'; }
         } catch (err) { /* scene not ready yet */ }
       }
       place();
