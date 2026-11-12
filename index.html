@@ -108,8 +108,23 @@
       position: absolute;
       inset: 0;
       pointer-events: none;
-      box-shadow: inset 0 0 110px rgba(0, 0, 0, 0.88);
       z-index: 5;
+      /* A single inset shadow laid a hard ring around the edges and stopped
+         dead. Two soft layers instead: a wide radial that thins out gradually
+         (no visible frame on any aspect ratio), plus a floor-to-ceiling wash so
+         the bottom of the screen sinks under the desk and the top recedes. */
+      background:
+        radial-gradient(122% 98% at 50% 44%,
+          rgba(0, 0, 0, 0) 66%,
+          rgba(0, 0, 0, 0.09) 82%,
+          rgba(0, 0, 0, 0.26) 92%,
+          rgba(0, 0, 0, 0.48) 100%),
+        linear-gradient(180deg,
+          rgba(6, 8, 12, 0.26) 0%,
+          rgba(6, 8, 12, 0.04) 20%,
+          rgba(6, 8, 12, 0) 38%,
+          rgba(6, 8, 12, 0) 78%,
+          rgba(4, 6, 10, 0.24) 100%);
     }
 
     /* =========================================================================
@@ -3177,14 +3192,17 @@ Duration: 2022 – Present (6th Semester)<br><br>
     renderer.toneMappingExposure = 1.1;
     container.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0x1a2233, 1.15);
+    /* Rebalanced, not relit: the same nine-lamp rig and the same warm/cool
+       split, nudged so the lamp pools read brighter and the corners fall away
+       instead of sitting at one flat value. Ambient down, key up, rim up. */
+    const ambientLight = new THREE.AmbientLight(0x1a2233, 1.08);
     scene.add(ambientLight);
 
-    const lampLight = new THREE.SpotLight(0xffdf99, 3.8);
+    const lampLight = new THREE.SpotLight(0xffdf99, 4.0);
     lampLight.position.set(-0.88, 1.24, 0.6);
     lampLight.target.position.set(0, 0.25, 0.3);
     lampLight.angle = Math.PI / 3.0;
-    lampLight.penumbra = 0.55;
+    lampLight.penumbra = 0.62;
     lampLight.castShadow = true;
     lampLight.shadow.mapSize.width = 1024;
     lampLight.shadow.mapSize.height = 1024;
@@ -3192,7 +3210,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     scene.add(lampLight);
     scene.add(lampLight.target);
 
-    const screenGlow = new THREE.PointLight(0x38bdf8, 1.2, 3.5);
+    const screenGlow = new THREE.PointLight(0x38bdf8, 1.25, 3.5);
     screenGlow.position.set(0, 0.8, 0.45);
     scene.add(screenGlow);
 
@@ -3204,7 +3222,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
        black shapes — the reason the desk read as a floating slab.
        A cool camera-side fill gives every front face a readable value, and a
        warm bounce (light coming back up off the floor) grounds the desk. */
-    const frontFill = new THREE.DirectionalLight(0xbfd4ff, 0.42);
+    const frontFill = new THREE.DirectionalLight(0xbfd4ff, 0.46);
     frontFill.position.set(0.6, 1.4, 5.5);
     scene.add(frontFill);
 
@@ -3215,7 +3233,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
     /* The lamp's cone points at the desk, not at the wall behind it, so the
        panelling got almost no light and read as flat black. A soft wash from
        just behind the monitor top makes the wall legible. */
-    const wallWash = new THREE.PointLight(0xffc98a, 1.25, 3.6, 2);
+    const wallWash = new THREE.PointLight(0xffc98a, 1.28, 3.6, 2);
     wallWash.position.set(0.15, 1.75, -0.9);
     scene.add(wallWash);
 
@@ -3227,9 +3245,24 @@ Duration: 2022 – Present (6th Semester)<br><br>
        2. SCULPTED 3D OBJECTS
        ===================================================================== */
     // ── Floor + Back Wall (fill the room so mobile doesn't show void) ──
+    /* Flat slate read as a single grey value all the way to the vignette. A
+       radial gradient — a touch of lamp bounce under the desk, falling away to
+       the room's dark — gives the floor a horizon without adding geometry. */
+    const floorCanvas = document.createElement('canvas');
+    floorCanvas.width = floorCanvas.height = 256;
+    const fc = floorCanvas.getContext('2d');
+    const floorGrad = fc.createRadialGradient(128, 128, 8, 128, 128, 128);
+    floorGrad.addColorStop(0, 'rgba(42, 47, 61, 1)');
+    floorGrad.addColorStop(0.34, 'rgba(30, 35, 47, 1)');
+    floorGrad.addColorStop(0.68, 'rgba(20, 24, 33, 1)');
+    floorGrad.addColorStop(1, 'rgba(9, 11, 16, 1)');
+    fc.fillStyle = floorGrad;
+    fc.fillRect(0, 0, 256, 256);
+    const floorTex = new THREE.CanvasTexture(floorCanvas);
+
     const floorMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(18, 18),
-      new THREE.MeshStandardMaterial({ color: 0x1c2230, roughness: 0.95, metalness: 0.0 })
+      new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95, metalness: 0.0 })
     );
     floorMesh.rotation.x = -Math.PI / 2;
     floorMesh.position.set(0, -0.78, 0);
@@ -3271,9 +3304,36 @@ Duration: 2022 – Present (6th Semester)<br><br>
     if (renderer.capabilities && renderer.capabilities.getMaxAnisotropy) {
       slatTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     }
+
+    /* Same panelling, same spacing, same plane — the slats were painted flat,
+       so the wall never picked up a grazing highlight. A bump map traced from
+       the very same stripes gives each board a face and each groove a recess;
+       the wall's outline and depth are untouched. */
+    const slatBumpCanvas = document.createElement('canvas');
+    slatBumpCanvas.width = 256;
+    slatBumpCanvas.height = 128;
+    const sb = slatBumpCanvas.getContext('2d');
+    sb.fillStyle = '#1a1a1a';
+    sb.fillRect(0, 0, 256, 128);
+    for (let i = 0; i < 16; i++) {
+      sb.fillStyle = '#cfcfcf';
+      sb.fillRect(i * 16 + 2, 0, 11, 128);
+      sb.fillStyle = 'rgba(255,255,255,0.55)';
+      sb.fillRect(i * 16 + 11.5, 0, 1.5, 128);
+    }
+    const slatBumpTex = new THREE.CanvasTexture(slatBumpCanvas);
+    slatBumpTex.wrapS = slatBumpTex.wrapT = THREE.RepeatWrapping;
+    slatBumpTex.repeat.set(4, 1);
+    if (renderer.capabilities && renderer.capabilities.getMaxAnisotropy) {
+      slatBumpTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    }
+
     const slatWall = new THREE.Mesh(
       new THREE.PlaneGeometry(9, 2.9),
-      new THREE.MeshStandardMaterial({ map: slatTex, roughness: 0.92 })
+      new THREE.MeshStandardMaterial({
+        map: slatTex, roughness: 0.92,
+        bumpMap: slatBumpTex, bumpScale: 0.012
+      })
     );
     slatWall.position.set(0, 0.55, WALL_Z + 0.02);
     slatWall.receiveShadow = true;
@@ -3419,17 +3479,19 @@ Duration: 2022 – Present (6th Semester)<br><br>
     }
 
     // a few knots for character (kept clear of the tile edges)
+    const knots = [];
     for (let k = 0; k < 3; k++) {
-      const kx = 110 + Math.random() * 290;
-      const ky = 55 + Math.random() * 146;
+      knots.push({ kx: 110 + Math.random() * 290, ky: 55 + Math.random() * 146 });
+    }
+    knots.forEach((kn) => {
       for (let r = 2; r < 15; r += 2.5) {
         wx.beginPath();
-        wx.ellipse(kx, ky, r * 2.2, r, 0, 0, Math.PI * 2);
+        wx.ellipse(kn.kx, kn.ky, r * 2.2, r, 0, 0, Math.PI * 2);
         wx.strokeStyle = 'rgba(26,15,8,0.09)';
         wx.lineWidth = 1;
         wx.stroke();
       }
-    }
+    });
 
     const woodTex = new THREE.CanvasTexture(woodCanvas);
     woodTex.wrapS = woodTex.wrapT = THREE.RepeatWrapping;
@@ -3438,9 +3500,88 @@ Duration: 2022 – Present (6th Semester)<br><br>
       woodTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     }
 
+    /* ── Surface relief ────────────────────────────────────────────────────
+       The colour map alone leaves the board dead flat: the grain is painted on
+       but never catches the lamp, so the top reads as one smooth sheet. Two
+       maps built from the very same strokes fix that without touching colour:
+         · bump      — grain lines proud of the board, pores and knots sunk;
+         · roughness — grain and worn patches take the light differently, so
+                       the highlight breaks up instead of reading as plastic.
+       Both reuse `strokes` and `knots`, so relief sits exactly under the paint
+       and the tiling stays seamless at 2x1 like the colour map. */
+    function woodReliefTex(kind) {
+      const cv = document.createElement('canvas');
+      cv.width = 512; cv.height = 256;
+      const c2 = cv.getContext('2d');
+      const bump = kind === 'bump';
+      c2.fillStyle = bump ? '#808080' : '#ffffff';
+      c2.fillRect(0, 0, 512, 256);
+
+      /* broad wear: keeps the roughness from looking like machine noise */
+      const wear = c2.createLinearGradient(0, 0, 512, 256);
+      if (bump) {
+        wear.addColorStop(0, 'rgba(255,255,255,0.06)');
+        wear.addColorStop(0.5, 'rgba(0,0,0,0.05)');
+        wear.addColorStop(1, 'rgba(255,255,255,0.06)');
+      } else {
+        wear.addColorStop(0, 'rgba(198,198,198,0.30)');
+        wear.addColorStop(0.42, 'rgba(255,255,255,0)');
+        wear.addColorStop(0.72, 'rgba(206,206,206,0.26)');
+        wear.addColorStop(1, 'rgba(255,255,255,0.10)');
+      }
+      c2.fillStyle = wear;
+      c2.fillRect(0, 0, 512, 256);
+
+      for (let pass = -1; pass <= 1; pass++) {
+        const dx = pass * 512;
+        for (const st of strokes) {
+          c2.beginPath();
+          for (let x = 0; x <= 512; x += 8) {
+            const y = st.gy + st.amp * Math.sin((Math.PI * 2 * st.cycles * x) / 512 + st.phase);
+            if (x === 0) c2.moveTo(dx, y); else c2.lineTo(dx + x, y);
+          }
+          const a = Math.min(1, st.alpha * (bump ? 2.1 : 1.5)).toFixed(3);
+          if (bump) {
+            c2.strokeStyle = st.dark ? 'rgba(46,46,46,' + a + ')' : 'rgba(212,212,212,' + a + ')';
+          } else {
+            c2.strokeStyle = st.dark ? 'rgba(150,150,150,' + a + ')' : 'rgba(255,255,255,' + a + ')';
+          }
+          c2.lineWidth = st.w;
+          c2.stroke();
+        }
+      }
+
+      knots.forEach((kn) => {
+        for (let r = 2; r < 15; r += 2.5) {
+          c2.beginPath();
+          c2.ellipse(kn.kx, kn.ky, r * 2.2, r, 0, 0, Math.PI * 2);
+          c2.strokeStyle = bump ? 'rgba(48,48,48,0.22)' : 'rgba(168,168,168,0.18)';
+          c2.lineWidth = 1;
+          c2.stroke();
+        }
+      });
+
+      const t = new THREE.CanvasTexture(cv);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(2, 1);
+      if (renderer.capabilities && renderer.capabilities.getMaxAnisotropy) {
+        t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      }
+      return t;
+    }
+    const woodBumpTex = woodReliefTex('bump');
+    const woodRoughTex = woodReliefTex('rough');
+
     const deskTop = new THREE.Mesh(
       new THREE.BoxGeometry(4.2, 0.12, 2.2),
-      new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.42, metalness: 0.08 })
+      new THREE.MeshStandardMaterial({
+        map: woodTex,
+        /* roughness stays at ~0.42 on average: the map averages ~0.97, so the
+           base is raised to compensate and only the *variation* is new */
+        roughness: 0.435, metalness: 0.08,
+        bumpMap: woodBumpTex, bumpScale: 0.0035,
+        roughnessMap: woodRoughTex
+      })
     );
     deskTop.position.set(0, 0, 0);
     deskTop.receiveShadow = true;
@@ -3450,7 +3591,11 @@ Duration: 2022 – Present (6th Semester)<br><br>
     /* Four apron rails on the leg lines — plain joinery, no drawer: the
        pedestal/drawer read as clutter at phone size and is gone. */
     const APRON_Y = -0.16, APRON_H = 0.2, APRON_T = 0.085;
-    const deskApronMat = new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.48, metalness: 0.06 });
+    const deskApronMat = new THREE.MeshStandardMaterial({
+      map: woodTex, roughness: 0.5, metalness: 0.06,
+      bumpMap: woodBumpTex, bumpScale: 0.003,
+      roughnessMap: woodRoughTex
+    });
 
     [
       [LEG_X * 2 - 0.12, APRON_H, APRON_T, 0, APRON_Y, LEG_Z],
@@ -3616,6 +3761,48 @@ Duration: 2022 – Present (6th Semester)<br><br>
     pen.position.set(0, 0.025, 0);
     notebookGroup.add(pen);
     scene.add(notebookGroup);
+
+    /* ── Contact shadows ───────────────────────────────────────────────────
+       A 1024² soft shadow map loses the last few centimetres where an object
+       actually meets the board, so the monitor, lamp and notebook read as if
+       hovering. A short dark patch under each one grounds it. These are unlit
+       decals: no geometry added to the room, nothing moved, nothing that casts
+       a shadow of its own, 2 triangles each. */
+    const CONTACT_Y = 0.0625;   // just above the 0.12 board (top face at 0.06)
+    function contactShadow(obj, spread, strength, y) {
+      if (!obj) return;
+      const b = new THREE.Box3().setFromObject(obj);
+      if (b.isEmpty()) return;
+      const cx = (b.min.x + b.max.x) / 2;
+      const cz = (b.min.z + b.max.z) / 2;
+      const rx = Math.max(0.07, ((b.max.x - b.min.x) / 2) * (spread || 1.05));
+      const rz = Math.max(0.07, ((b.max.z - b.min.z) / 2) * (spread || 1.05));
+      const size = 128;
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = size;
+      const c2 = cv.getContext('2d');
+      const g = c2.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      g.addColorStop(0, 'rgba(0,0,0,' + strength + ')');
+      g.addColorStop(0.42, 'rgba(0,0,0,' + (strength * 0.66).toFixed(3) + ')');
+      g.addColorStop(0.72, 'rgba(0,0,0,' + (strength * 0.22).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c2.fillStyle = g;
+      c2.fillRect(0, 0, size, size);
+      const tex = new THREE.CanvasTexture(cv);
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(rx * 2, rz * 2),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(cx, y === undefined ? CONTACT_Y : y, cz);
+      mesh.renderOrder = 2;
+      mesh.userData.contactStrength = strength;
+      scene.add(mesh);
+    }
+    contactShadow(crtGroup, 1.0, 0.40);
+    contactShadow(lampBase, 1.5, 0.38);
+    contactShadow(notebookGroup, 1.0, 0.34);
+    contactShadow(mousepad, 1.0, 0.26);
 
     // Dust Particles
     const dustCount = 75;
