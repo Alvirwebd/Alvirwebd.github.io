@@ -104,6 +104,9 @@
       z-index: 0;
     }
 
+    /* Scene gestures stay on the canvas; scrollable UI overlays keep native touch. */
+    #canvas-container canvas { touch-action: none; }
+
     .room-vignette {
       position: absolute;
       inset: 0;
@@ -3966,16 +3969,69 @@ Duration: 2022 – Present (6th Semester)<br><br>
       }
     }
 
-    let _lastTouch = 0;
-    window.addEventListener('touchend', (e) => {
-      if (e.changedTouches && e.changedTouches.length > 0) {
-        _lastTouch = Date.now();
+    // Only gestures that start on the canvas belong to the scene. DOM overlays
+    // remain independent, and a drag or cancelled/multi-touch gesture is not a tap.
+    const sceneCanvas = renderer.domElement;
+    let sceneTouch = null;
+    let lastSceneTouch = 0;
+    function updateTouchParallax(x, y) {
+      const rect = sceneCanvas.getBoundingClientRect();
+      mouse.x = Math.max(-1, Math.min(1, ((x - rect.left) / Math.max(1, rect.width)) * 2 - 1));
+      mouse.y = Math.max(-1, Math.min(1, -((y - rect.top) / Math.max(1, rect.height)) * 2 + 1));
+    }
+    function startSceneTouch(id, x, y) {
+      if (sceneTouch) { sceneTouch.moved = true; return; }
+      sceneTouch = { id: id, x: x, y: y, moved: false };
+    }
+    function moveSceneTouch(id, x, y) {
+      if (!sceneTouch || sceneTouch.id !== id) return;
+      if (Math.hypot(x - sceneTouch.x, y - sceneTouch.y) > 10) sceneTouch.moved = true;
+      if (sceneTouch.moved) updateTouchParallax(x, y);
+    }
+    function endSceneTouch(id, x, y, cancelled) {
+      if (!sceneTouch || sceneTouch.id !== id) return;
+      const tap = !cancelled && !sceneTouch.moved && Math.hypot(x - sceneTouch.x, y - sceneTouch.y) <= 10;
+      sceneTouch = null;
+      lastSceneTouch = Date.now();
+      mouse.x = mouse.y = 0;
+      if (tap) handle3DClick(x, y);
+    }
+    if (window.PointerEvent) {
+      sceneCanvas.addEventListener('pointerdown', e => {
+        if (e.pointerType !== 'touch') return;
+        startSceneTouch(e.pointerId, e.clientX, e.clientY);
+        try { sceneCanvas.setPointerCapture(e.pointerId); } catch (err) { /* capture not available */ }
+      });
+      sceneCanvas.addEventListener('pointermove', e => {
+        if (e.pointerType === 'touch') moveSceneTouch(e.pointerId, e.clientX, e.clientY);
+      });
+      sceneCanvas.addEventListener('pointerup', e => {
+        if (e.pointerType === 'touch') endSceneTouch(e.pointerId, e.clientX, e.clientY, false);
+      });
+      sceneCanvas.addEventListener('pointercancel', e => {
+        if (e.pointerType === 'touch') endSceneTouch(e.pointerId, e.clientX, e.clientY, true);
+      });
+      sceneCanvas.addEventListener('lostpointercapture', e => {
+        if (e.pointerType === 'touch') endSceneTouch(e.pointerId, e.clientX, e.clientY, true);
+      });
+    } else {
+      // Older Safari versions without Pointer Events.
+      sceneCanvas.addEventListener('touchstart', e => {
+        if (e.touches.length !== 1) { if (sceneTouch) sceneTouch.moved = true; return; }
         const t = e.changedTouches[0];
-        handle3DClick(t.clientX, t.clientY, e);
-      }
-    }, { passive: true });
-    window.addEventListener('click', (e) => {
-      if (Date.now() - _lastTouch < 500) return; // suppress ghost click after touchend
+        startSceneTouch(t.identifier, t.clientX, t.clientY);
+      }, { passive: true });
+      sceneCanvas.addEventListener('touchmove', e => {
+        for (const t of e.changedTouches) moveSceneTouch(t.identifier, t.clientX, t.clientY);
+      }, { passive: true });
+      const finishTouch = (e, cancelled) => {
+        for (const t of e.changedTouches) endSceneTouch(t.identifier, t.clientX, t.clientY, cancelled);
+      };
+      sceneCanvas.addEventListener('touchend', e => finishTouch(e, false), { passive: true });
+      sceneCanvas.addEventListener('touchcancel', e => finishTouch(e, true), { passive: true });
+    }
+    sceneCanvas.addEventListener('click', e => {
+      if (Date.now() - lastSceneTouch < 500) return; // compatibility click after touch
       handle3DClick(e.clientX, e.clientY, e);
     });
 
