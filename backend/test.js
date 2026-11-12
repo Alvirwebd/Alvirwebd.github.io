@@ -825,6 +825,151 @@ async function runRealIntegrationTests() {
     }
     assert(hitRateLimit, 'Real D1 Analytics: Rapid analytics pings from same IP rate-limited with HTTP 429');
   }
+
+  // 8. PR #25 Final Review: Fabricated IP Elimination & Owner IP History Pagination
+  {
+    console.log('\n--- Running PR #25 Review Corrections: IP Fallback & Pagination Tests ---');
+
+    // 8a. Rate Limiting on POST /api/thoughts with missing CF-Connecting-IP
+    // Verify that missing header uses 'missing_ip_anonymous' identity, is rate limited, and NEVER uses 127.0.0.1
+    let missingHeaderRateLimited = false;
+    for (let i = 0; i < 7; i++) {
+      const thoughtReq = new Request('http://localhost/api/thoughts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `Missing IP thought ${i}`, nickname: 'Anon' })
+      });
+      const thoughtRes = await worker.fetch(thoughtReq, env);
+      if (thoughtRes.status === 429) {
+        missingHeaderRateLimited = true;
+        break;
+      }
+    }
+    assert(missingHeaderRateLimited,
+      'PR #25 Rate Limit: Requests with missing CF-Connecting-IP are rate-limited on missing_ip_anonymous bucket');
+
+    // Confirm that 127.0.0.1 was NEVER hashed or stored for missing-IP requests
+    const encoder = new TextEncoder();
+    const hash127Buf = await crypto.subtle.digest('SHA-256', encoder.encode('visitor_127.0.0.1'));
+    const hash127Hex = Array.from(new Uint8Array(hash127Buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const fake127RateLimit = realDb.sqlite.prepare('SELECT ip_hash FROM rate_limits WHERE ip_hash = ?').get(hash127Hex);
+    assert(!fake127RateLimit,
+      'PR #25 Rate Limit: 127.0.0.1 is NEVER used as fallback or stored in rate_limits');
+
+    // Verify valid CF-Connecting-IP is not blocked by the anonymous bucket
+    const validIpSubmission = new Request('http://localhost/api/thoughts', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': '198.51.100.201'
+      },
+      body: JSON.stringify({ text: 'Valid IP thought', nickname: 'Alice' })
+    });
+    const validIpRes = await worker.fetch(validIpSubmission, env);
+    assert(validIpRes.status === 201,
+      'PR #25 Rate Limit: Valid CF-Connecting-IP request succeeds independently of missing_ip_anonymous bucket');
+
+    // 8b. Owner Login Brute-Force Lockout with missing CF-Connecting-IP
+    // Send 5 failed attempts without CF-Connecting-IP
+    let missingIpLockout = false;
+    for (let i = 0; i < 6; i++) {
+      const loginReq = new Request('http://localhost/api/owner/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'wrong_secret_attempt' })
+      });
+      const loginRes = await worker.fetch(loginReq, env);
+      if (loginRes.status === 429) {
+        missingIpLockout = true;
+        break;
+      }
+    }
+    assert(missingIpLockout,
+      'PR #25 Lockout: Owner login with missing CF-Connecting-IP locks out after failed attempts on missing_ip_anonymous');
+
+    // Confirm that 127.0.0.1 was NEVER hashed or stored in owner_login_attempts
+    const hashOwner127Buf = await crypto.subtle.digest('SHA-256', encoder.encode('owner_127.0.0.1'));
+    const hashOwner127Hex = Array.from(new Uint8Array(hashOwner127Buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const fakeOwner127 = realDb.sqlite.prepare('SELECT ip_hash FROM owner_login_attempts WHERE ip_hash = ?').get(hashOwner127Hex);
+    assert(!fakeOwner127,
+      'PR #25 Lockout: 127.0.0.1 is NEVER used as fallback or stored in owner_login_attempts');
+
+    // Verify valid CF-Connecting-IP can still log in if credentials are correct
+    const validIpLogin = new Request('http://localhost/api/owner/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': '198.51.100.202'
+      },
+      body: JSON.stringify({ key: env.ADMIN_KEY })
+    });
+    const validLoginRes = await worker.fetch(validIpLogin, env);
+    assert(validLoginRes.status === 200,
+      'PR #25 Lockout: Valid CF-Connecting-IP owner login succeeds independently of anonymous lockout');
+    const validSessionToken = (await validLoginRes.json()).session_token;
+
+    // 8c. IP History Pagination (GET /api/owner/analytics/ips)
+    // Clear and insert exactly 45 deterministic records
+    realDb.sqlite.exec('DELETE FROM visitor_ip_records');
+    for (let i = 1; i <= 45; i++) {
+      realDb.sqlite.prepare(
+        "INSERT INTO visitor_ip_records (id, ip, path, created_at) VALUES (?, ?, ?, datetime('now', ?))"
+      ).run(i, `198.51.100.${i}`, `/page-${i}`, `-${45 - i} minutes`);
+    }
+
+    // Page 1 with limit=20
+    const p1Req = new Request('http://localhost/api/owner/analytics/ips?page=1&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const p1Res = await worker.fetch(p1Req, env);
+    const p1Data = await p1Res.json();
+    assert(p1Res.status === 200 && p1Data.success === true, 'PR #25 Pagination: Page 1 request succeeds (HTTP 200)');
+    assert(p1Data.records.length === 20, 'PR #25 Pagination: Page 1 returns exactly 20 records');
+    assert(p1Data.pagination.page === 1, 'PR #25 Pagination: Page 1 pagination.page === 1');
+    assert(p1Data.pagination.limit === 20, 'PR #25 Pagination: Page 1 pagination.limit === 20');
+    assert(p1Data.pagination.total === 45, 'PR #25 Pagination: Page 1 pagination.total === 45');
+    assert(p1Data.pagination.total_pages === 3, 'PR #25 Pagination: Page 1 pagination.total_pages === 3');
+    assert(p1Data.pagination.has_next === true, 'PR #25 Pagination: Page 1 has_next === true');
+    assert(p1Data.pagination.has_prev === false, 'PR #25 Pagination: Page 1 has_prev === false');
+    assert(p1Data.records[0].id === 45 && p1Data.records[19].id === 26,
+      'PR #25 Pagination: Page 1 correctly ordered id DESC (45 down to 26)');
+
+    // Page 2 with limit=20
+    const p2Req = new Request('http://localhost/api/owner/analytics/ips?page=2&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const p2Res = await worker.fetch(p2Req, env);
+    const p2Data = await p2Res.json();
+    assert(p2Data.records.length === 20, 'PR #25 Pagination: Page 2 returns exactly 20 records');
+    assert(p2Data.pagination.page === 2, 'PR #25 Pagination: Page 2 pagination.page === 2');
+    assert(p2Data.pagination.has_next === true, 'PR #25 Pagination: Page 2 has_next === true');
+    assert(p2Data.pagination.has_prev === true, 'PR #25 Pagination: Page 2 has_prev === true');
+    assert(p2Data.records[0].id === 25 && p2Data.records[19].id === 6,
+      'PR #25 Pagination: Page 2 correctly ordered id DESC (25 down to 6)');
+
+    // Page 3 with limit=20
+    const p3Req = new Request('http://localhost/api/owner/analytics/ips?page=3&limit=20', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const p3Res = await worker.fetch(p3Req, env);
+    const p3Data = await p3Res.json();
+    assert(p3Data.records.length === 5, 'PR #25 Pagination: Page 3 returns remaining 5 records');
+    assert(p3Data.pagination.page === 3, 'PR #25 Pagination: Page 3 pagination.page === 3');
+    assert(p3Data.pagination.has_next === false, 'PR #25 Pagination: Page 3 has_next === false');
+    assert(p3Data.pagination.has_prev === true, 'PR #25 Pagination: Page 3 has_prev === true');
+    assert(p3Data.records[0].id === 5 && p3Data.records[4].id === 1,
+      'PR #25 Pagination: Page 3 correctly ordered id DESC (5 down to 1)');
+
+    // Bounds checking: limit > 100 clamped to 100, page < 1 clamped to 1
+    const clampReq = new Request('http://localhost/api/owner/analytics/ips?page=0&limit=999', {
+      headers: { 'Authorization': `Bearer ${validSessionToken}` }
+    });
+    const clampRes = await worker.fetch(clampReq, env);
+    const clampData = await clampRes.json();
+    assert(clampData.pagination.page === 1, 'PR #25 Pagination: page <= 0 safely clamped to 1');
+    assert(clampData.pagination.limit === 100, 'PR #25 Pagination: limit > 100 safely clamped to 100');
+    assert(clampData.records.length === 45, 'PR #25 Pagination: Returns all 45 records within clamped limit of 100');
+  }
 }
 
 // ============================================================================

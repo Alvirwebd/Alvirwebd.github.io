@@ -3358,6 +3358,12 @@ Duration: 2022 – Present (6th Semester)<br><br>
                 <div id="ownerIpRecordsList" class="max-h-48 overflow-y-auto space-y-1 text-[10px] divide-y divide-[#44372E]/10">
                   <div class="text-[#44372E]/50 italic">Loading IP records...</div>
                 </div>
+                <!-- Pagination Controls -->
+                <div id="ownerIpPagination" class="pt-2 border-t border-[#44372E]/15 flex items-center justify-between text-[10px] font-mono text-[#44372E]/80 flex-wrap gap-2">
+                  <button type="button" id="btnPrevIpPage" onclick="prevOwnerIpPage()" class="px-2.5 py-1 bg-[#EAE3D5] hover:bg-[#D7AD49]/30 rounded-[2px] border border-[#44372E]/30 disabled:opacity-40 font-bold transition">◀ Prev Page</button>
+                  <span id="ownerIpPageIndicator" class="font-bold text-[#234034]">Page 1 of 1</span>
+                  <button type="button" id="btnNextIpPage" onclick="nextOwnerIpPage()" class="px-2.5 py-1 bg-[#EAE3D5] hover:bg-[#D7AD49]/30 rounded-[2px] border border-[#44372E]/30 disabled:opacity-40 font-bold transition">Next Page ▶</button>
+                </div>
               </div>
             </div>
           </div>
@@ -5230,7 +5236,10 @@ Duration: 2022 – Present (6th Semester)<br><br>
       } catch (e) {}
     }
 
-    async function loadOwnerIpRecords() {
+    let currentOwnerIpPage = 1;
+    let totalOwnerIpPages = 1;
+
+    async function loadOwnerIpRecords(page = 1) {
       const session = sessionStorage.getItem('alvir_owner_session');
       if (!session) return;
       const endpoint = getGuestbookEndpoint();
@@ -5239,8 +5248,13 @@ Duration: 2022 – Present (6th Semester)<br><br>
       const listEl = document.getElementById('ownerIpRecordsList');
       if (!listEl) return;
 
+      const prevBtn = document.getElementById('btnPrevIpPage');
+      const nextBtn = document.getElementById('btnNextIpPage');
+      const pageIndicator = document.getElementById('ownerIpPageIndicator');
+
       try {
-        const res = await fetch(`${endpoint}/api/owner/analytics/ips?limit=50`, {
+        currentOwnerIpPage = page;
+        const res = await fetch(`${endpoint}/api/owner/analytics/ips?page=${page}&limit=20`, {
           headers: { 'Authorization': `Bearer ${session}` }
         });
         if (!res.ok) {
@@ -5249,6 +5263,15 @@ Duration: 2022 – Present (6th Semester)<br><br>
         }
         const data = await res.json();
         const records = Array.isArray(data.records) ? data.records : [];
+        const pagination = data.pagination || { page: 1, total_pages: 1, total: records.length, has_prev: false, has_next: false };
+        totalOwnerIpPages = pagination.total_pages || 1;
+
+        if (pageIndicator) {
+          pageIndicator.textContent = `Page ${pagination.page} of ${pagination.total_pages || 1} (${pagination.total ?? records.length} total)`;
+        }
+        if (prevBtn) prevBtn.disabled = !pagination.has_prev;
+        if (nextBtn) nextBtn.disabled = !pagination.has_next;
+
         if (records.length === 0) {
           listEl.innerHTML = '<div class="text-[#44372E]/50 italic text-[10px]">No visitor IP records captured yet.</div>';
           return;
@@ -5269,6 +5292,18 @@ Duration: 2022 – Present (6th Semester)<br><br>
         }).join('');
       } catch (e) {
         listEl.innerHTML = '<div class="text-rose-600 font-mono text-[10px]">Network error loading IP logs.</div>';
+      }
+    }
+
+    function prevOwnerIpPage() {
+      if (currentOwnerIpPage > 1) {
+        loadOwnerIpRecords(currentOwnerIpPage - 1);
+      }
+    }
+
+    function nextOwnerIpPage() {
+      if (currentOwnerIpPage < totalOwnerIpPages) {
+        loadOwnerIpRecords(currentOwnerIpPage + 1);
       }
     }
 
@@ -5540,6 +5575,8 @@ Duration: 2022 – Present (6th Semester)<br><br>
     window.deleteOwnerIpRecords = deleteOwnerIpRecords;
     window.loadOwnerAnalytics = loadOwnerAnalytics;
     window.loadOwnerIpRecords = loadOwnerIpRecords;
+    window.prevOwnerIpPage = prevOwnerIpPage;
+    window.nextOwnerIpPage = nextOwnerIpPage;
     window.sendVisitorAnalytics = sendVisitorAnalytics;
 
     // Trigger anonymous analytics visit ping on page load (deduplicated per session)

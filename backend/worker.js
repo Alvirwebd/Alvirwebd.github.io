@@ -108,8 +108,8 @@ export default {
     try {
       // 1. POST /api/thoughts (Visitor submission with atomic rate-limiting)
       if (request.method === 'POST' && path === '/api/thoughts') {
-        const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
-        const rateLimitOk = await checkSubmissionRateLimit(env.DB, clientIp);
+        const client = resolveClientIdentity(request);
+        const rateLimitOk = await checkSubmissionRateLimit(env.DB, client.identity);
         if (!rateLimitOk) {
           return jsonResponse({
             error: 'Rate limit exceeded: Maximum 5 submissions per 10 minutes. Please try again later.'
@@ -235,10 +235,10 @@ export default {
 
       // 3. POST /api/owner/login (Authenticate owner with durable, concurrency-safe brute-force protection)
       if (request.method === 'POST' && path === '/api/owner/login') {
-        const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+        const client = resolveClientIdentity(request);
 
-        // Check if IP is currently locked out
-        const lockStatus = await getOwnerLockStatus(env.DB, clientIp);
+        // Check if IP or client identity is currently locked out
+        const lockStatus = await getOwnerLockStatus(env.DB, client.identity);
         if (lockStatus.locked) {
           return jsonResponse({
             error: `Too many failed login attempts. Locked for ${Math.ceil(lockStatus.remainingLockSeconds / 60)} minutes.`
@@ -261,7 +261,7 @@ export default {
         const { key } = body || {};
 
         if (!key || typeof key !== 'string' || !env.ADMIN_KEY) {
-          const failResult = await recordFailedOwnerLoginAtomic(env.DB, clientIp);
+          const failResult = await recordFailedOwnerLoginAtomic(env.DB, client.identity);
           if (failResult.locked) {
             return jsonResponse({
               error: `Too many failed login attempts. Locked for ${Math.ceil(failResult.remainingLockSeconds / 60)} minutes.`
@@ -275,7 +275,7 @@ export default {
 
         const keyOk = constantTimeCompare(key, env.ADMIN_KEY);
         if (!keyOk) {
-          const failResult = await recordFailedOwnerLoginAtomic(env.DB, clientIp);
+          const failResult = await recordFailedOwnerLoginAtomic(env.DB, client.identity);
           if (failResult.locked) {
             return jsonResponse({
               error: `Too many failed login attempts. Locked for ${Math.ceil(failResult.remainingLockSeconds / 60)} minutes.`
@@ -287,8 +287,8 @@ export default {
           return jsonResponse({ error: 'Invalid owner credentials.' }, 401, corsHeaders);
         }
 
-        // Authentication succeeded: clear failed attempts for this IP
-        await clearOwnerLoginAttempts(env.DB, clientIp);
+        // Authentication succeeded: clear failed attempts for this client identity
+        await clearOwnerLoginAttempts(env.DB, client.identity);
 
         // Issue 2-hour secure session token
         const sessionBytes = new Uint8Array(32);
@@ -359,12 +359,10 @@ export default {
       if (request.method === 'POST' && path === '/api/analytics/visit') {
         // Capture IP exclusively via Cloudflare's trusted CF-Connecting-IP.
         // Never fall back to 127.0.0.1 or accept spoofable headers (X-Forwarded-For, X-Real-IP).
-        const rawIp = request.headers.get('CF-Connecting-IP');
-        const hasValidIp = typeof rawIp === 'string' && isValidIpAddress(rawIp.trim());
-        const clientIp = hasValidIp ? rawIp.trim() : null;
+        const client = resolveClientIdentity(request);
 
-        if (clientIp) {
-          const rateLimitOk = await checkAnalyticsRateLimit(env.DB, clientIp);
+        if (client.hasTrustedIp && client.ip) {
+          const rateLimitOk = await checkAnalyticsRateLimit(env.DB, client.identity);
           if (!rateLimitOk) {
             return jsonResponse({ error: 'Rate limit exceeded.' }, 429, corsHeaders);
           }
@@ -398,13 +396,13 @@ export default {
 
         // 3. Insert into visitor_ip_records ONLY if CF-Connecting-IP was present and valid
         // (User-Agent collection stopped completely per privacy hardening)
-        if (clientIp) {
+        if (client.hasTrustedIp && client.ip) {
           await env.DB.prepare(
             'INSERT INTO visitor_ip_records (ip, path) VALUES (?, ?)'
-          ).bind(clientIp, visitPath).run();
+          ).bind(client.ip, visitPath).run();
         }
 
-        return jsonResponse({ success: true, recorded: true, ip_stored: Boolean(clientIp) }, 200, corsHeaders);
+        return jsonResponse({ success: true, recorded: true, ip_stored: Boolean(client.ip) }, 200, corsHeaders);
       }
 
       // 8. GET /api/owner/analytics (Aggregated anonymous stats for authenticated owner)
@@ -442,7 +440,7 @@ export default {
         }, 200, corsHeaders);
       }
 
-      // 9. GET /api/owner/analytics/ips (Raw visitor IP records for authenticated owner only)
+      // 9. GET /api/owner/analytics/ips (Raw visitor IP records for authenticated owner only with pagination)
       if (request.method === 'GET' && path === '/api/owner/analytics/ips') {
         const sessionToken = extractToken(request);
         const isOwner = await verifyOwnerSession(env.DB, sessionToken);
@@ -450,16 +448,36 @@ export default {
           return jsonResponse({ error: 'Unauthorized: Valid owner session required.' }, 401, corsHeaders);
         }
 
-        let limit = parseInt(url.searchParams.get('limit') || '50', 10);
-        if (isNaN(limit) || limit <= 0) limit = 50;
-        if (limit > 200) limit = 200;
+        let page = parseInt(url.searchParams.get('page') || '1', 10);
+        if (isNaN(page) || page < 1) page = 1;
+
+        let limit = parseInt(url.searchParams.get('limit') || '20', 10);
+        if (isNaN(limit) || limit <= 0) limit = 20;
+        if (limit > 100) limit = 100;
+
+        const offset = (page - 1) * limit;
+
+        const totalRow = await env.DB.prepare('SELECT COUNT(*) as total FROM visitor_ip_records').first();
+        const total = totalRow ? Number(totalRow.total) : 0;
+        const totalPages = Math.max(1, Math.ceil(total / limit));
 
         // Preserves all historical records indefinitely, excludes user_agent
         const { results } = await env.DB.prepare(
-          'SELECT id, ip, path, created_at FROM visitor_ip_records ORDER BY id DESC LIMIT ?'
-        ).bind(limit).all();
+          'SELECT id, ip, path, created_at FROM visitor_ip_records ORDER BY id DESC LIMIT ? OFFSET ?'
+        ).bind(limit, offset).all();
 
-        return jsonResponse({ success: true, records: results || [] }, 200, corsHeaders);
+        return jsonResponse({
+          success: true,
+          records: results || [],
+          pagination: {
+            page,
+            limit,
+            total,
+            total_pages: totalPages,
+            has_next: page < totalPages,
+            has_prev: page > 1
+          }
+        }, 200, corsHeaders);
       }
 
       // 10. POST /api/owner/analytics/delete (Owner-only manual deletion of IP records)
@@ -605,6 +623,22 @@ function isValidIpAddress(ip) {
   // IPv6: standard 8-group or compressed with ::
   const ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
   return ipv6Regex.test(trimmed);
+}
+
+/**
+ * Resolves the client identity for rate-limiting, lockout, and tracking.
+ * Extracts and strictly validates CF-Connecting-IP.
+ * Never falls back to fabricated IPs like 127.0.0.1.
+ * Missing or invalid IP headers return identity 'missing_ip_anonymous' so missing-header
+ * requests cannot bypass rate-limiting or lockout protections.
+ */
+function resolveClientIdentity(request) {
+  const rawIp = request.headers.get('CF-Connecting-IP');
+  if (typeof rawIp === 'string' && isValidIpAddress(rawIp.trim())) {
+    const ip = rawIp.trim();
+    return { ip, identity: ip, hasTrustedIp: true };
+  }
+  return { ip: null, identity: 'missing_ip_anonymous', hasTrustedIp: false };
 }
 
 /**
