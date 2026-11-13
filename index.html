@@ -8,6 +8,13 @@
   <meta name="theme-color" content="#080a0f" />
   <meta name="color-scheme" content="dark" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <link rel="canonical" href="https://alvirwebd.github.io/" />
+
+  <!-- Favicons & Touch Icons -->
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="./favicon.ico" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+
   <title>Alvir Shahriar — Cozy Desk &amp; AlvirOS</title>
   <meta name="description" content="Explore Alvir Shahriar's 3D interactive cozy desk and retro workstation OS featuring full-stack projects, research, and creative web experiments." />
 
@@ -30,6 +37,55 @@
   <meta name="twitter:description" content="Explore Alvir Shahriar's 3D interactive cozy desk and retro workstation OS featuring full-stack projects, research, and creative web experiments." />
   <meta name="twitter:image" content="https://alvirwebd.github.io/profile.jpg" />
   <meta name="twitter:image:alt" content="Alvir Shahriar" />
+
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://alvirwebd.github.io/#website",
+        "url": "https://alvirwebd.github.io/",
+        "name": "Alvir Shahriar — Cozy Desk & AlvirOS",
+        "description": "Explore Alvir Shahriar's 3D interactive cozy desk and retro workstation OS featuring full-stack projects, research, and creative web experiments.",
+        "inLanguage": "en"
+      },
+      {
+        "@type": "Person",
+        "@id": "https://alvirwebd.github.io/#person",
+        "name": "Alvir Shahriar",
+        "url": "https://alvirwebd.github.io/",
+        "image": "https://alvirwebd.github.io/profile.jpg",
+        "jobTitle": "Software Engineer & Researcher",
+        "sameAs": [
+          "https://github.com/Alvirwebd",
+          "https://bd.linkedin.com/in/alvir-shahriar-15bb1232a"
+        ],
+        "knowsAbout": [
+          "JavaScript",
+          "TypeScript",
+          "Python",
+          "C++",
+          "SQL",
+          "React",
+          "Next.js",
+          "Node.js",
+          "Three.js",
+          "WebGL"
+        ]
+      },
+      {
+        "@type": "ProfilePage",
+        "@id": "https://alvirwebd.github.io/#webpage",
+        "url": "https://alvirwebd.github.io/",
+        "name": "Alvir Shahriar — Cozy Desk & AlvirOS",
+        "isPartOf": { "@id": "https://alvirwebd.github.io/#website" },
+        "mainEntity": { "@id": "https://alvirwebd.github.io/#person" }
+      }
+    ]
+  }
+  </script>
 
   <!-- Lock the layout to the *visible* viewport (iOS Safari toolbars / Android URL bar).
        --app-h is used by every full-height surface instead of raw 100vh. -->
@@ -75,6 +131,19 @@
   <script src="./three.min.js"></script>
 
   <style>
+    /* Accessible screen-reader-only utility for semantic headings */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+
     :root {
       /* JS keeps this in sync with the visible viewport height */
       --app-h: 100vh;
@@ -2116,6 +2185,7 @@
        LUXURY, CUTE & TRENDY TOP BARS (DYNAMIC ISLAND STYLE)
        ========================================================================= -->
   <header id="roomHeader" class="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none transition-opacity duration-300">
+    <h1 class="sr-only">Alvir Shahriar — Cozy Desk &amp; AlvirOS Portfolio</h1>
     
     <!-- Top Left: Identity Nameplate (flat ivory plate, pixel avatar, hanko stamp) -->
     <div class="relative pointer-events-auto">

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <!-- card background & border -->
+  <rect x="0" y="0" width="16" height="16" fill="#44372E" rx="2"/>
+  <rect x="1" y="1" width="14" height="14" fill="#D7AD49" rx="1.5"/>
+  <!-- hair -->
+  <rect x="4" y="2" width="8" height="3" fill="#44372E"/>
+  <rect x="3" y="3" width="1" height="4" fill="#44372E"/>
+  <rect x="12" y="3" width="1" height="4" fill="#44372E"/>
+  <!-- face -->
+  <rect x="4" y="5" width="8" height="5" fill="#EAE3D5"/>
+  <!-- headphones -->
+  <rect x="2" y="6" width="2" height="3" fill="#44372E"/>
+  <rect x="12" y="6" width="2" height="3" fill="#44372E"/>
+  <rect x="2" y="9" width="2" height="1" fill="#D7AD49"/>
+  <rect x="12" y="9" width="2" height="1" fill="#D7AD49"/>
+  <!-- eyes -->
+  <rect x="6" y="7" width="1" height="1" fill="#44372E"/>
+  <rect x="9" y="7" width="1" height="1" fill="#44372E"/>
+  <!-- mouth -->
+  <rect x="7" y="9" width="2" height="1" fill="#44372E"/>
+  <!-- shirt -->
+  <rect x="4" y="10" width="8" height="4" fill="#347E79"/>
+  <rect x="7" y="10" width="2" height="4" fill="#EAE3D5"/>
+</svg>
