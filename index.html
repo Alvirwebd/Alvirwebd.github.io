@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#080a0f" />
   <meta name="color-scheme" content="dark" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
   <title>Alvir Shahriar — Cozy Desk & AlvirOS</title>
 
   <!-- Lock the layout to the *visible* viewport (iOS Safari toolbars / Android URL bar).
@@ -6635,7 +6636,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
         termCmdHistory.push(rawCmd);
 
         const line = document.createElement('div');
-        line.innerHTML = `<span class="text-emerald-400">alvir@workstation:~$</span> <span class="text-white">${cmd}</span>`;
+        line.innerHTML = `<span class="text-emerald-400">alvir@workstation:~$</span> <span class="text-white">${escapeHtml(cmd)}</span>`;
         termHistory.appendChild(line);
 
         const out = document.createElement('div');
@@ -6644,7 +6645,7 @@ Duration: 2022 – Present (6th Semester)<br><br>
           const res = COMMANDS[cmd]();
           if (res) { out.innerHTML = res; termHistory.appendChild(out); }
         } else {
-          out.innerHTML = `<span class="text-red-400">Unknown command '${cmd}'. Type 'help'.</span>`;
+          out.innerHTML = `<span class="text-red-400">Unknown command '${escapeHtml(cmd)}'. Type 'help'.</span>`;
           termHistory.appendChild(out);
         }
         document.getElementById('terminalBody').scrollTop = document.getElementById('terminalBody').scrollHeight;
